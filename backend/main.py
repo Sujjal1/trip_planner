@@ -8,6 +8,7 @@ import os
 import secrets
 import sqlite3
 from contextlib import contextmanager
+from backend.database import Postgres, IntegrityError
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -21,6 +22,9 @@ from pydantic import BaseModel, Field, ConfigDict
 
 load_dotenv(Path(__file__).with_name('.env'))
 DB = os.getenv('DATABASE_PATH', 'backend/codrive.sqlite3')
+DATABASE_URL = os.getenv('DATABASE_URL', '')
+if os.getenv('RENDER') == 'true' and not DATABASE_URL:
+    raise RuntimeError('DATABASE_URL is required on Render; local storage is not persistent.')
 app = FastAPI(title='CoDrive', version='0.1.0')
 
 def now():
@@ -28,9 +32,12 @@ def now():
 
 @contextmanager
 def db():
-    c = sqlite3.connect(DB, timeout=15)
-    c.row_factory = sqlite3.Row
-    c.execute('PRAGMA foreign_keys=ON')
+    if DATABASE_URL:
+        c = Postgres(DATABASE_URL)
+    else:
+        c = sqlite3.connect(DB, timeout=15)
+        c.row_factory = sqlite3.Row
+        c.execute('PRAGMA foreign_keys=ON')
     try:
         yield c
         c.commit()
@@ -41,7 +48,8 @@ def db():
         c.close()
 
 def init_db():
-    Path(DB).parent.mkdir(parents=True, exist_ok=True)
+    if not DATABASE_URL:
+        Path(DB).parent.mkdir(parents=True, exist_ok=True)
     with db() as c:
         c.executescript('''
         CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password TEXT NOT NULL);
@@ -57,7 +65,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),message TEXT,created_at TEXT);
         ''')
         for table in ('trips','expenses'):
-            if 'deleted_at' not in {r['name'] for r in c.execute(f'PRAGMA table_info({table})')}:
+            if DATABASE_URL:
+                c.execute(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS deleted_at TEXT')
+            elif 'deleted_at' not in {r['name'] for r in c.execute(f'PRAGMA table_info({table})')}:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN deleted_at TEXT')
 
 init_db()
@@ -142,7 +152,7 @@ def register(data: Auth, response: Response, request: Request):
     with db() as c:
         try:
             uid=c.execute('INSERT INTO users(name,email,password) VALUES(?,?,?)',(data.name,data.email.lower(),password_hash(data.password))).lastrowid
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             raise HTTPException(409,'That email is already registered.')
     session(response,uid)
     return {'ok':True}
@@ -255,7 +265,7 @@ def start(vid:int,data:TripStart,u=Depends(current_user)):
         if data.start_odometer<v['odometer']: raise HTTPException(400,'Starting odometer cannot be below the vehicle odometer.')
         try:
             tid=c.execute('INSERT INTO trips(vehicle_id,user_id,origin,destination,purpose,start_odometer,mpg,fuel_price,started_at,sharing) VALUES(?,?,?,?,?,?,?,?,?,?)',(vid,u['id'],data.origin,data.destination,data.purpose,data.start_odometer,v['mpg'],v['fuel_price'],now(),data.sharing)).lastrowid
-        except sqlite3.IntegrityError: raise HTTPException(409,'This vehicle already has a trip in progress.')
+        except IntegrityError: raise HTTPException(409,'This vehicle already has a trip in progress.')
         notify(c,vid,f"{u['name']} started a drive. " + ('Location sharing is on.' if data.sharing else 'Location is private.'))
     return {'id':tid}
 

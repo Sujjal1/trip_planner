@@ -4,6 +4,7 @@ from pathlib import Path
 
 os.environ['DATABASE_PATH'] = str(Path(tempfile.mkdtemp()) / 'test.sqlite3')
 os.environ['DEMO_MODE'] = 'false'
+os.environ['DATABASE_URL'] = os.getenv('TEST_DATABASE_URL', '')
 from backend import main
 from fastapi.testclient import TestClient
 import pytest
@@ -13,6 +14,9 @@ HEADERS = {'X-CoDrive':'1'}
 @pytest.fixture(autouse=True)
 def clean(tmp_path, monkeypatch):
     monkeypatch.setattr(main,'DB',str(tmp_path/'garage.sqlite3'))
+    if main.DATABASE_URL:
+        with main.db() as c:
+            c.execute('TRUNCATE users, sessions, vehicles, members, trips, expenses, expense_shares, routines, payments, notifications RESTART IDENTITY CASCADE')
     main.attempts.clear()
     main.init_db()
 
@@ -63,6 +67,25 @@ def test_trip_cost_snapshot_and_single_active_trip():
     result=c.post(f'/api/trips/{tid}/finish',json={'end_odometer':10060})
     assert result.json()['cost_cents']==720 # 60 / original 30 * original $3.60
     assert c.post(f'/api/trips/{tid}/finish',json={'end_odometer':10060}).status_code==409
+
+
+def test_concurrent_starts_only_create_one_trip():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    owner = client()
+    vid = vehicle(owner)
+    barrier = Barrier(2)
+
+    def attempt():
+        browser = TestClient(main.app, headers=HEADERS)
+        browser.cookies.update(owner.cookies)
+        barrier.wait(timeout=10)
+        return start(browser, vid).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: attempt(), range(2)))
+    assert sorted(results) == [200, 409]
+    assert len(owner.get(f'/api/vehicles/{vid}').json()['trips']) == 1
     data=c.get(f'/api/vehicles/{vid}').json()
     assert data['vehicle']['odometer']==10060
     assert data['owners'][0]['balance_cents']==720

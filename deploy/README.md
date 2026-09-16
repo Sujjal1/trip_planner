@@ -1,5 +1,30 @@
 # CoDrive hosting
 
+## Free Render + Neon deployment
+
+Use the repository's `render.yaml` Blueprint, which explicitly selects free
+compute and creates no paid database or disk. Create a Neon project on its Free
+plan and provide its pooled PostgreSQL connection string as `DATABASE_URL` in
+Render's secret environment settings. Keep `sslmode=require` (or stronger) in
+the connection string. Never commit the URL. Select a nearby Neon region.
+
+Render builds the complete app from the `codex/codrive-mvp` branch after checks
+pass and supplies a public HTTPS `onrender.com` address. Supply the existing API
+keys in Render's environment settings; only `VITE_GOOGLE_MAPS_API_KEY` is included
+in the browser build. Add the new hostname to that key's referrer restrictions.
+Server Places search needs a server-restricted key, not the browser key.
+
+Free Render servers sleep when idle, so the first load can be slow. Keep both
+accounts on Free plans and verify their current usage limits. This deployment
+starts a new empty cloud garage: laptop records stay on the laptop until an
+explicit data migration. Render startup fails if `DATABASE_URL` is missing,
+rather than silently saving records to its temporary filesystem.
+
+PostgreSQL uses transaction-scoped advisory locking to preserve the local
+SQLite app's read-check-write behavior. This intentionally serializes database
+transactions for the small pilot; scale-out work should use per-garage locking.
+GitHub runs the same API tests against SQLite and PostgreSQL.
+
 The repository is on GitHub. The deployment package serves the React frontend
 and Python backend together over HTTPS so the existing secure-cookie login works
 on iPhones without relying on third-party cookies.

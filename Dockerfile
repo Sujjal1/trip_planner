@@ -15,7 +15,7 @@ COPY backend/requirements.lock ./backend/requirements.lock
 RUN pip install --no-cache-dir -r backend/requirements.lock \
     && useradd --uid 10001 --create-home codrive \
     && mkdir /data && chown codrive:codrive /data
-COPY backend/main.py ./backend/main.py
+COPY backend/*.py ./backend/
 COPY --from=frontend /build/dist ./frontend/dist
 USER codrive
 EXPOSE 8000
