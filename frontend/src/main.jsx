@@ -1,3 +1,4 @@
+import {PaymentForm, PaymentHistory, RemovedEntries} from "./Payments.jsx";
 import { GoogleEmbed } from "./GoogleRouteSearch.jsx";
 import {
   TripPlanner,
@@ -308,6 +309,9 @@ function App() {
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
+  const canRemove = row => row.user_id === me.user.id || v.created_by === me.user.id;
+  const askRemove = (kind,id) => open('remove',{kind,id});
+  const restoreRecord = (kind,id) => run(()=>api(`/records/${kind}/${id}`,'PATCH',{deleted:false}),'Entry restored. Balances updated.');
   const tripTable = (rows) => (
     <div className="table-scroll">
       <table>
@@ -323,7 +327,7 @@ function App() {
               </span>
             </th>
             <th>DATE</th>
-            <th>TYPE</th>
+            <th>TYPE</th><th>ACTIONS</th>
           </tr>
         </thead>
         <tbody>
@@ -369,6 +373,7 @@ function App() {
                 </span>
                 {!t.sharing && <EyeOff size={13} className="private-icon" />}
               </td>
+              <td>{t.ended_at && canRemove(t) && <button className="text-btn" onClick={()=>askRemove("trips",t.id)}>Delete trip</button>}</td>
             </tr>
           ))}
         </tbody>
@@ -719,7 +724,7 @@ function App() {
                       note={
                         (myOwner?.balance_cents || 0) < 0
                           ? "Credit carried forward"
-                          : "Your usage + shared costs − paid"
+                          : "After purchases and owner payments"
                       }
                       color="lavender"
                     />
@@ -929,6 +934,7 @@ function App() {
               )}
               {page === "Expenses" && (
                 <>
+                  <PaymentHistory payments={data.payments || []} canRemove={canRemove} onRemove={askRemove} onAdd={()=>open("payment")}/>
                   <div className="stats-grid three">
                     <Stat
                       label="Estimated fuel used"
@@ -960,7 +966,7 @@ function App() {
                       <strong>Simple, transparent math.</strong> Fuel use =
                       miles ÷ MPG × saved price. Other expenses are split
                       equally among owners at the time of entry. Fuel purchases
-                      give the payer credit. Balances are estimates, not payment
+                      give the payer credit. Direct payments reduce the sender’s balance and increase the recipient’s. Balances are estimates, not payment
                       requests; unused fuel credit carries forward.
                     </p>
                   </div>
@@ -976,8 +982,8 @@ function App() {
                             <th>CO-OWNER</th>
                             <th>FUEL USED (EST.)</th>
                             <th>SHARED EXPENSES</th>
-                            <th>PAID</th>
-                            <th>NET BALANCE</th>
+                            <th>PURCHASES PAID</th>
+                            <th>PAYMENTS SENT</th><th>RECEIVED</th><th>NET BALANCE</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -991,7 +997,7 @@ function App() {
                               </td>
                               <td>{money(o.fuel_cents)}</td>
                               <td>{money(o.shared_cents)}</td>
-                              <td>{money(o.paid_cents)}</td>
+                              <td>{money(o.paid_cents)}</td><td>{money(o.sent_cents || 0)}</td><td>{money(o.received_cents || 0)}</td>
                               <td>
                                 <strong>{money(o.balance_cents)}</strong>
                               </td>
@@ -1021,7 +1027,7 @@ function App() {
                               <th>PAID BY</th>
                               <th>CATEGORY</th>
                               <th>AMOUNT</th>
-                              <th>DATE</th>
+                              <th>DATE</th><th>ACTIONS</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1035,7 +1041,7 @@ function App() {
                                   <span className="pill">{e.category}</span>
                                 </td>
                                 <td>{money(e.amount_cents)}</td>
-                                <td>{date(e.created_at)}</td>
+                                <td>{date(e.created_at)}</td><td>{canRemove(e)&&<button className="text-btn" onClick={()=>askRemove("expenses",e.id)}>Delete expense</button>}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1051,6 +1057,7 @@ function App() {
                   </section>
                 </>
               )}
+              {["Trips","Expenses"].includes(page) && <RemovedEntries entries={data.removed || []} busy={busy} onRestore={restoreRecord}/>}
               {page === "Co-owners" && (
                 <div className="owners-grid">
                   {owners.map((o, i) => (
@@ -1224,6 +1231,8 @@ function App() {
         <Modal
           title={
             {
+              payment: "Record a payment to another owner",
+              remove: "Delete this entry?",
               trip: "Plan your journey",
               details: "Vehicle details",
               expense: "Record a shared expense",
@@ -1250,6 +1259,8 @@ function App() {
               {error}
             </div>
           )}
+          {modal === "payment" && <PaymentForm owners={owners} userId={me.user.id} busy={busy} onSubmit={body=>run(()=>api(`/vehicles/${vid}/payments`,'POST',body),'Payment recorded. Both owner balances updated.')}/>}
+          {modal === "remove" && <div className="modal-body form"><p>This removes the entry from totals and recalculates everyone’s balance. You can restore it from Deleted entries.</p>{prefill.kind==='trips'&&<p>The vehicle’s current odometer will not change. If the reading was wrong too, correct it in Vehicle details after removing the trip.</p>}<button className="btn" disabled={busy} onClick={()=>run(()=>api(`/records/${prefill.kind}/${prefill.id}`,'PATCH',{deleted:true}),'Entry deleted. You can restore it from Deleted entries.')}>Delete entry</button><button className="btn secondary" onClick={()=>setModal(null)}>Keep entry</button></div>}
           {modal === "vehicle" && (
             <DataForm
               busy={busy}

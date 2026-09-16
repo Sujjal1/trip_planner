@@ -1,0 +1,12 @@
+.git
+.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/.env
+**/.env.*
+**/*.sqlite3*
+demo-assets
+.codex
+.agents

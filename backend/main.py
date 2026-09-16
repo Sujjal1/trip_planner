@@ -53,10 +53,20 @@ def init_db():
         CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),description TEXT,category TEXT,amount_cents INTEGER,created_at TEXT);
         CREATE TABLE IF NOT EXISTS expense_shares(expense_id INTEGER REFERENCES expenses(id),user_id INTEGER REFERENCES users(id),amount_cents INTEGER,PRIMARY KEY(expense_id,user_id));
         CREATE TABLE IF NOT EXISTS routines(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),origin TEXT,destination TEXT,days TEXT,time TEXT,miles REAL,purpose TEXT);
+        CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),recipient_id INTEGER REFERENCES users(id),amount_cents INTEGER NOT NULL,note TEXT,created_at TEXT,deleted_at TEXT);
         CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),message TEXT,created_at TEXT);
         ''')
+        for table in ('trips','expenses'):
+            if 'deleted_at' not in {r['name'] for r in c.execute(f'PRAGMA table_info({table})')}:
+                c.execute(f'ALTER TABLE {table} ADD COLUMN deleted_at TEXT')
 
 init_db()
+
+@app.get('/api/health')
+def health():
+    with db() as c:
+        c.execute('SELECT 1').fetchone()
+    return {'status': 'ok'}
 
 @app.middleware('http')
 async def security(request: Request, call_next):
@@ -201,23 +211,34 @@ def dashboard(vid:int,u=Depends(current_user)):
         v=member(c,vid,u['id'])
         if v['created_by']!=u['id']: v.pop('invite')
         owners=[dict(x) for x in c.execute('SELECT u.id,u.name FROM users u JOIN members m ON u.id=m.user_id WHERE m.vehicle_id=?',(vid,))]
-        trips=[dict(x) for x in c.execute('SELECT t.*,u.name driver FROM trips t JOIN users u ON t.user_id=u.id WHERE vehicle_id=? ORDER BY id DESC',(vid,))]
+        trips=[dict(x) for x in c.execute('SELECT t.*,u.name driver FROM trips t JOIN users u ON t.user_id=u.id WHERE vehicle_id=? AND deleted_at IS NULL ORDER BY id DESC',(vid,))]
         for t in trips:
+            # Ignore fields left in existing databases by the retired mobile prototype.
+            for key in ('destination_latitude','destination_longitude','gps_miles','distance_source'):
+                t.pop(key,None)
             if not t['sharing']:
                 t['latitude']=t['longitude']=t['location_at']=None
                 if t['user_id']!=u['id']: t['origin']=t['destination']='Private location'
-        expenses=[dict(x) for x in c.execute('SELECT e.*,u.name payer FROM expenses e JOIN users u ON e.user_id=u.id WHERE vehicle_id=? ORDER BY id DESC',(vid,))]
+        expenses=[dict(x) for x in c.execute('SELECT e.*,u.name payer FROM expenses e JOIN users u ON e.user_id=u.id WHERE vehicle_id=? AND deleted_at IS NULL ORDER BY id DESC',(vid,))]
+        payments=[dict(x) for x in c.execute('SELECT p.*,a.name payer,b.name recipient FROM payments p JOIN users a ON a.id=p.user_id JOIN users b ON b.id=p.recipient_id WHERE vehicle_id=? AND deleted_at IS NULL ORDER BY p.id DESC',(vid,))]
+        removed=[]
+        for table in ('trips','expenses','payments'):
+            for row in c.execute(f'SELECT id,user_id,deleted_at FROM {table} WHERE vehicle_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC',(vid,)):
+                if row['user_id']==u['id'] or v['created_by']==u['id']:
+                    removed.append({'kind':table,'id':row['id'],'removed_at':row['deleted_at']})
         for o in owners:
             owned=[t for t in trips if t['user_id']==o['id']]
             o['miles']=round(sum((t['end_odometer']-t['start_odometer']) for t in owned if t['ended_at']),1)
             o['trip_count']=len(owned)
             o['fuel_cents']=sum(t['cost_cents'] for t in owned)
             o['paid_cents']=sum(e['amount_cents'] for e in expenses if e['user_id']==o['id'])
-            o['shared_cents']=c.execute('SELECT COALESCE(SUM(s.amount_cents),0) FROM expense_shares s JOIN expenses e ON e.id=s.expense_id WHERE e.vehicle_id=? AND s.user_id=?',(vid,o['id'])).fetchone()[0]
-            o['balance_cents']=o['fuel_cents']+o['shared_cents']-o['paid_cents']
+            o['shared_cents']=c.execute('SELECT COALESCE(SUM(s.amount_cents),0) FROM expense_shares s JOIN expenses e ON e.id=s.expense_id WHERE e.vehicle_id=? AND s.user_id=? AND e.deleted_at IS NULL',(vid,o['id'])).fetchone()[0]
+            o['sent_cents']=sum(p['amount_cents'] for p in payments if p['user_id']==o['id'])
+            o['received_cents']=sum(p['amount_cents'] for p in payments if p['recipient_id']==o['id'])
+            o['balance_cents']=o['fuel_cents']+o['shared_cents']-o['paid_cents']-o['sent_cents']+o['received_cents']
         routines=[dict(x) for x in c.execute('SELECT r.*,u.name driver FROM routines r JOIN users u ON r.user_id=u.id WHERE vehicle_id=?',(vid,))]
         notices=[dict(x) for x in c.execute('SELECT * FROM notifications WHERE vehicle_id=? ORDER BY id DESC LIMIT 30',(vid,))]
-    return {'vehicle':v,'owners':owners,'trips':trips,'expenses':expenses,'routines':routines,'notifications':notices,'server_time':now()}
+    return {'vehicle':v,'owners':owners,'trips':trips,'expenses':expenses,'payments':payments,'removed':removed,'routines':routines,'notifications':notices,'server_time':now()}
 
 class TripStart(Model):
     origin: str = Field(min_length=1,max_length=200)
@@ -303,6 +324,52 @@ def expense(vid:int,data:Expense,u=Depends(current_user)):
             c.executemany('INSERT INTO expense_shares VALUES(?,?,?)',[(eid,uid,q+(i<r)) for i,uid in enumerate(ids)])
         notify(c,vid,f"{u['name']} recorded ${amount/100:.2f} for {data.description}.")
     return {'id':eid}
+
+class Payment(Model):
+    recipient_id: int
+    amount: Decimal = Field(gt=0,le=100_000,max_digits=8,decimal_places=2)
+    note: str = Field(default='',max_length=140)
+
+@app.post('/api/vehicles/{vid}/payments')
+def payment(vid:int,data:Payment,u=Depends(current_user)):
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        member(c,vid,u['id'])
+        if data.recipient_id==u['id']: raise HTTPException(400,'Choose another owner to receive the payment.')
+        member(c,vid,data.recipient_id)
+        amount=cents(data.amount)
+        pid=c.execute('INSERT INTO payments(vehicle_id,user_id,recipient_id,amount_cents,note,created_at) VALUES(?,?,?,?,?,?)',(vid,u['id'],data.recipient_id,amount,data.note,now())).lastrowid
+        recipient=c.execute('SELECT name FROM users WHERE id=?',(data.recipient_id,)).fetchone()['name']
+        notify(c,vid,f"{u['name']} recorded a ${amount/100:.2f} payment to {recipient}.")
+    return {'id':pid}
+
+class Removal(Model):
+    deleted: bool
+
+@app.patch('/api/records/{kind}/{rid}')
+def remove_record(kind:str,rid:int,data:Removal,u=Depends(current_user)):
+    if kind not in ('trips','expenses','payments'): raise HTTPException(404,'Record not found.')
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        row=c.execute(f'SELECT * FROM {kind} WHERE id=?',(rid,)).fetchone()
+        if not row: raise HTTPException(404,'Record not found.')
+        v=member(c,row['vehicle_id'],u['id'])
+        if row['user_id']!=u['id'] and v['created_by']!=u['id']:
+            raise HTTPException(403,'Only the person who recorded this entry or the garage creator can remove or restore it.')
+        if bool(row['deleted_at'])==data.deleted: return {'ok':True}
+        if kind=='trips':
+            if not row['ended_at']: raise HTTPException(409,'Finish the active trip before removing it.')
+            if not data.deleted:
+                for other in c.execute('SELECT * FROM trips WHERE vehicle_id=? AND deleted_at IS NULL',(row['vehicle_id'],)):
+                    if not other['ended_at']: raise HTTPException(409,'Finish the active trip before restoring this trip.')
+                    if row['started_at']<other['ended_at'] and row['ended_at']>other['started_at']:
+                        raise HTTPException(409,'This trip overlaps a current record. Remove the replacement before restoring it.')
+                    if (other['ended_at']<=row['started_at'] and other['end_odometer']>row['start_odometer']) or (other['started_at']>=row['ended_at'] and other['start_odometer']<row['end_odometer']):
+                        raise HTTPException(409,'This trip conflicts with recorded odometer readings.')
+                c.execute('UPDATE vehicles SET odometer=MAX(odometer,?) WHERE id=?',(row['end_odometer'],row['vehicle_id']))
+        c.execute(f'UPDATE {kind} SET deleted_at=? WHERE id=?',(now() if data.deleted else None,rid))
+        notify(c,row['vehicle_id'],f"{u['name']} {'removed' if data.deleted else 'restored'} {kind.rstrip('s')} #{rid}. Balances recalculated.")
+    return {'ok':True}
 
 class Routine(Model):
     origin: str = Field(min_length=1,max_length=200)
@@ -390,7 +457,18 @@ async def scan(data:Scan,u=Depends(current_user)):
             res.raise_for_status()
             result=json.loads(res.json()['candidates'][0]['content']['parts'][0]['text'])
             return Reading.model_validate(result).model_dump()
-    except (httpx.HTTPError,KeyError,IndexError,ValueError): raise HTTPException(502,'Gemini could not read this photo. Check your key/quota or enter readings manually.')
+    except httpx.TimeoutException:
+        raise HTTPException(504,'Gemini took too long to read this photo. No readings were saved. Try again later or enter the numbers manually.')
+    except httpx.HTTPStatusError as exc:
+        status=exc.response.status_code
+        if status==429: raise HTTPException(503,'Gemini quota or rate limit reached. No readings were saved. Wait and try again, or enter the numbers manually.')
+        if status in (401,403): raise HTTPException(503,'Gemini rejected access. Check the server API key and project permissions. Manual entry is still available.')
+        if status==404: raise HTTPException(503,'The configured Gemini model is unavailable. Check GEMINI_MODEL on the server.')
+        raise HTTPException(502,'Gemini is temporarily unavailable. No readings were saved. Try again later or enter the numbers manually.')
+    except httpx.RequestError:
+        raise HTTPException(502,'The server could not connect to Gemini. No readings were saved. Check the connection or use manual entry.')
+    except (KeyError,IndexError,ValueError):
+        raise HTTPException(502,'Gemini returned an unreadable result. No readings were saved. Try a clearer photo or enter the numbers manually.')
 
 @app.post('/api/demo')
 def demo(response:Response,request:Request):
@@ -424,7 +502,7 @@ def vehicle_details(vid:int,data:Vehicle,u=Depends(current_user)):
         if data.odometer!=v['odometer']:
             if c.execute('SELECT 1 FROM trips WHERE vehicle_id=? AND ended_at IS NULL',(vid,)).fetchone():
                 raise HTTPException(409,'Finish the active trip before adjusting the odometer.')
-            latest=c.execute('SELECT MAX(end_odometer) FROM trips WHERE vehicle_id=?',(vid,)).fetchone()[0]
+            latest=c.execute('SELECT MAX(end_odometer) FROM trips WHERE vehicle_id=? AND deleted_at IS NULL',(vid,)).fetchone()[0]
             if latest is not None and data.odometer<latest:
                 raise HTTPException(400,'Odometer cannot be below a recorded trip reading.')
         c.execute('UPDATE vehicles SET name=?,plate=?,mpg=?,odometer=?,fuel_price=?,price_source=?,price_date=? WHERE id=?',(data.name,data.plate,data.mpg,data.odometer,data.fuel_price,v['price_source'] if data.fuel_price==v['fuel_price'] else 'Owner entered',v['price_date'] if data.fuel_price==v['fuel_price'] else now(),vid))
@@ -449,7 +527,7 @@ def past_trip(vid:int,data:PastTrip,u=Depends(current_user)):
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
         v=member(c,vid,u['id'])
-        for t in c.execute('SELECT * FROM trips WHERE vehicle_id=?',(vid,)):
+        for t in c.execute('SELECT * FROM trips WHERE vehicle_id=? AND deleted_at IS NULL',(vid,)):
             ts=datetime.fromisoformat(t['started_at'])
             te=datetime.fromisoformat(t['ended_at']) if t['ended_at'] else datetime.max.replace(tzinfo=timezone.utc)
             if start_at<te and end_at>ts:

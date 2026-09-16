@@ -220,3 +220,81 @@ def test_google_places_provider_failure_is_actionable(monkeypatch):
     assert r.status_code==503
     assert 'Places API (New)' in r.json()['detail']
     assert 'private provider details' not in r.text
+
+
+@pytest.mark.parametrize('failure,expected_status,message',[
+    ('timeout',504,'took too long'),
+    (429,503,'quota or rate limit'),
+    (403,503,'rejected access'),
+    (404,503,'model is unavailable'),
+    (503,502,'temporarily unavailable'),
+])
+def test_photo_provider_errors_are_actionable(monkeypatch,failure,expected_status,message):
+    import httpx,base64,io
+    from PIL import Image
+    monkeypatch.setenv('GEMINI_API_KEY','test-key')
+    def provider(request):
+        if failure=='timeout': raise httpx.ReadTimeout('private details',request=request)
+        return httpx.Response(failure,json={'error':{'message':'private details'}})
+    original=httpx.AsyncClient
+    monkeypatch.setattr(main.httpx,'AsyncClient',lambda **kwargs: original(transport=httpx.MockTransport(provider),**kwargs))
+    image=io.BytesIO();Image.new('RGB',(8,8)).save(image,format='PNG')
+    c=client();result=c.post('/api/scan',json={'consent':True,'image':base64.b64encode(image.getvalue()).decode()})
+    assert result.status_code==expected_status
+    assert message in result.json()['detail']
+    assert 'private details' not in result.text
+
+
+def test_direct_payment_settles_both_owners_and_undoes_cleanly():
+    owner=client();vid=vehicle(owner);sam=client('Sam');join(sam,owner,vid)
+    uid=owner.get('/api/me').json()['user']['id'];sid=sam.get('/api/me').json()['user']['id']
+    expense=owner.post(f'/api/vehicles/{vid}/expenses',json={'description':'Service','category':'Maintenance','amount':60}).json()['id']
+    def balances():return {o['id']:o['balance_cents'] for o in owner.get(f'/api/vehicles/{vid}').json()['owners']}
+    assert balances()=={uid:-3000,sid:3000}
+    r=sam.post(f'/api/vehicles/{vid}/payments',json={'recipient_id':uid,'amount':'30.00','note':'Cash'})
+    assert r.status_code==200,r.text
+    pid=r.json()['id'];assert balances()=={uid:0,sid:0}
+    d=owner.get(f'/api/vehicles/{vid}').json();assert len(d['expenses'])==1 and len(d['payments'])==1
+    assert sam.patch(f'/api/records/payments/{pid}',json={'deleted':True}).status_code==200
+    assert balances()=={uid:-3000,sid:3000}
+    # Duplicate delete is harmless, restore applies exactly once.
+    sam.patch(f'/api/records/payments/{pid}',json={'deleted':True})
+    for _ in range(2):assert sam.patch(f'/api/records/payments/{pid}',json={'deleted':False}).status_code==200
+    assert balances()=={uid:0,sid:0}
+    assert sam.patch(f'/api/records/expenses/{expense}',json={'deleted':True}).status_code==403
+    assert owner.patch(f'/api/records/expenses/{expense}',json={'deleted':True}).status_code==200
+    assert balances()=={uid:3000,sid:-3000}
+    owner.patch(f'/api/records/expenses/{expense}',json={'deleted':False})
+    assert balances()=={uid:0,sid:0}
+
+
+def test_payments_reject_self_outsiders_and_fractional_cents():
+    c=client();vid=vehicle(c);uid=c.get('/api/me').json()['user']['id']
+    outsider=client('Other');oid=outsider.get('/api/me').json()['user']['id']
+    assert c.post(f'/api/vehicles/{vid}/payments',json={'recipient_id':uid,'amount':10}).status_code==400
+    assert c.post(f'/api/vehicles/{vid}/payments',json={'recipient_id':oid,'amount':10}).status_code==404
+    assert outsider.post(f'/api/vehicles/{vid}/payments',json={'recipient_id':uid,'amount':10}).status_code==404
+    for amount in ['0','-1','0.001','NaN','100000.01']:
+        assert c.post(f'/api/vehicles/{vid}/payments',json={'recipient_id':oid,'amount':amount}).status_code==422
+
+
+def test_trip_removal_restore_and_odometer_correction():
+    c=client();vid=vehicle(c);tid=start(c,vid).json()['id']
+    assert c.patch(f'/api/records/trips/{tid}',json={'deleted':True}).status_code==409
+    c.post(f'/api/trips/{tid}/finish',json={'end_odometer':10030})
+    assert c.patch(f'/api/records/trips/{tid}',json={'deleted':True}).status_code==200
+    d=c.get(f'/api/vehicles/{vid}').json()
+    assert d['trips']==[] and d['owners'][0]['fuel_cents']==0 and d['vehicle']['odometer']==10030
+    assert d['removed'][0]['id']==tid
+    assert c.patch(f'/api/records/trips/{tid}',json={'deleted':False}).status_code==200
+    assert c.get(f'/api/vehicles/{vid}').json()['owners'][0]['fuel_cents']==360
+    c.patch(f'/api/records/trips/{tid}',json={'deleted':True})
+    body={'name':'Our RAV4','plate':'TEST 123','mpg':30,'odometer':10000,'fuel_price':3.60}
+    assert c.patch(f'/api/vehicles/{vid}/details',json=body).status_code==200
+    # Restoring a record keeps the physical odometer at least as high as its ending reading.
+    c.patch(f'/api/records/trips/{tid}',json={'deleted':False})
+    assert c.get(f'/api/vehicles/{vid}').json()['vehicle']['odometer']==10030
+    outsider=client('Other')
+    assert outsider.patch(f'/api/records/trips/{tid}',json={'deleted':True}).status_code==404
+    main.init_db() # migrations must be safe to repeat against populated data.
+    assert c.get(f'/api/vehicles/{vid}').json()['trips'][0]['id']==tid

@@ -19,3 +19,22 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+      - name: Validate deployment configuration
+        run: APP_DOMAIN=codrive.example.com docker compose -f deploy/compose.yaml --env-file deploy/.env.example config --quiet
+      - name: Build deployment container
+        run: docker build -t codrive:test .
+      - name: Verify container startup
+        run: |
+          docker run -d --name codrive-test -p 127.0.0.1:8000:8000 codrive:test
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/api/health; then
+              curl --fail --silent http://127.0.0.1:8000/ | grep -q 'CoDrive'
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs codrive-test
+          exit 1
+      - name: Clean up deployment test
+        if: always()
+        run: docker rm -f codrive-test || true

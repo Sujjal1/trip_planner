@@ -98,6 +98,12 @@ SQLite is suitable for a small shared garage. Use PostgreSQL and shared session/
 
 GitHub Pages alone cannot host the Python API. Choose a Python-capable host with persistent storage, or host the frontend and proxy its `/api` requests to the backend. All current data lives in SQLite; there is no automatic cloud synchronization beyond clients talking to the same server.
 
+The [deployment package](deploy/README.md) includes a Docker build, HTTPS reverse
+proxy, persistent database volume, and a public health check. GitHub Actions
+validates the container in addition to application tests. AWS resources must
+still be selected against the signed-in account's actual free-tier eligibility;
+the configuration does not launch or purchase hosting.
+
 ## Map-first and photo-assisted trips
 
 **Vehicle details** now opens an editable vehicle card for name, plate, odometer, MPG, and fuel price. Odometer adjustments cannot invalidate recorded trips or change during an active drive.
@@ -115,3 +121,9 @@ The planner now uses live Google Places autocomplete results, fetched through au
 Enable **Places API (New)** with billing in your Google project, alongside Maps Embed API. Local development reuses the existing key from `frontend/.env` with the `APP_ORIGIN` referrer. For production (`COOKIE_SECURE=true`), configure a separate server-only `GOOGLE_PLACES_API_KEY` in `backend/.env`, restricted to Places API (New) and your server IP. Keep the browser Maps Embed key restricted to your website. Autocomplete session tokens are carried through place-details selection; only the needed place fields are requested. Places has its own pricing and quotas, separate from Maps Embed.
 
 The Google map iframe itself still cannot send a clicked pin back to CoDrive; choose the Google suggestion above the map. Google place IDs identify the selected locations in the preview; resolved addresses are stored in trip history. Background turn-by-turn navigation is not implemented.
+
+### Payments and corrections
+
+Use **Expenses → Record payment** to record money you already paid another owner outside CoDrive. This is a ledger entry, not a bank transfer or fuel purchase. It reduces the sender's net balance and increases the recipient's by the same amount. Owner balances include separate purchase, payment-sent, and payment-received totals; estimated fuel may leave a garage-wide surplus or shortfall, so these are not automatically assigned debts between specific people.
+
+Completed trips, expenses, and direct payments can be deleted by the author or garage creator. Deleted records are retained for restoration and excluded from totals. **Deleted entries** in Trips/Expenses restores them; the garage activity records both actions. Active trips must be finished first. Deleting a trip does not roll back the vehicle's current odometer. If needed, correct the odometer in Vehicle details after removing the incorrect trip. A restored trip cannot conflict with other recorded trips and may raise the current odometer to its ending reading.

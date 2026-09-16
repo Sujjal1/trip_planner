@@ -1,5 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MapPin, Navigation, RefreshCw } from "lucide-react";
+// Place-search session IDs are not authentication credentials. LAN HTTP may not expose randomUUID.
+function placeSessionToken() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, n => n.toString(16).padStart(2, '0')).join('');
+  }
+  return `places_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
 async function mapsApi(path, body, signal) {
   const res = await fetch("/api/maps/" + path, {
     method: "POST",
@@ -23,7 +33,7 @@ function GooglePlaceInput({ label, value, onSelect, onClear, onError }) {
     [busy, setBusy] = useState(false),
     [open, setOpen] = useState(false),
     [highlight, setHighlight] = useState(-1);
-  const token = useRef(crypto.randomUUID()),
+  const token = useRef(placeSessionToken()),
     requestVersion = useRef(0),
     callbacks = useRef({ onSelect, onClear, onError });
   callbacks.current = { onSelect, onClear, onError };
@@ -81,7 +91,7 @@ function GooglePlaceInput({ label, value, onSelect, onClear, onError }) {
       });
       setQuery(place.label);
       setSuggestions([]);
-      token.current = crypto.randomUUID();
+      token.current = placeSessionToken();
     } catch (e) {
       callbacks.current.onError(e.message);
     } finally {
