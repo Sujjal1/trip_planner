@@ -2569,3 +2569,67 @@ th,
   font-size: 12px;
   color: #718560;
 }
+gmp-place-autocomplete {
+  width: 100%;
+  color-scheme: light;
+}
+.selected-place {
+  font-size: 11px;
+  color: #42694d;
+  line-height: 1.6;
+}
+.map-shell {
+  position: relative;
+  min-height: 300px;
+}
+.map-loading {
+  font-size: 11px;
+  color: #537449;
+  background: #eff5e9;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.map-shell > .text-btn {
+  margin-top: 8px;
+}
+.google-place-field {
+  position: relative;
+}
+.google-place-field > label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.google-results {
+  list-style: none;
+  padding: 5px;
+  margin: 0;
+  border: 1px solid #d9e3d4;
+  border-radius: 7px;
+  background: white;
+  box-shadow: 0 8px 20px #244b3315;
+  max-height: 230px;
+  overflow: auto;
+}
+.google-results li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.google-results li:hover,
+.google-results li[aria-selected="true"] {
+  background: #edf4e8;
+}
+.google-results li > svg {
+  flex-shrink: 0;
+}
+.google-attribution {
+  width: 120px;
+  height: auto;
+  align-self: flex-end;
+}

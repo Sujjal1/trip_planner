@@ -180,3 +180,43 @@ def test_past_trip_charges_and_overlap_guards():
     assert c.post(f'/api/vehicles/{vid}/trips/manual',json=future).status_code==400
     naive={**body,'started_at':'2020-01-01T10:00:00','ended_at':'2020-01-01T11:00:00'}
     assert c.post(f'/api/vehicles/{vid}/trips/manual',json=naive).status_code==400
+
+
+def test_google_places_adapter_uses_google_results_and_requires_login(monkeypatch):
+    import httpx
+    monkeypatch.setenv('GOOGLE_PLACES_API_KEY','test-server-key')
+    main.place_requests.clear()
+    calls=[]
+    def provider(request):
+        calls.append(request)
+        assert request.headers['X-Goog-Api-Key']=='test-server-key'
+        if request.url.path.endswith(':autocomplete'):
+            return httpx.Response(200,json={'suggestions':[{'placePrediction':{'placeId':'ChIJ_test123','text':{'text':'Union Station, Chicago'}}}]})
+        assert request.headers['X-Goog-FieldMask']=='id,formattedAddress,location'
+        return httpx.Response(200,json={'id':'ChIJ_test123','formattedAddress':'225 S Canal St, Chicago, IL','location':{'latitude':41.878,'longitude':-87.64}})
+    original=httpx.AsyncClient
+    monkeypatch.setattr(main.httpx,'AsyncClient',lambda **kwargs: original(transport=httpx.MockTransport(provider),**kwargs))
+    c=client()
+    token='test-session-token-123'
+    r=c.post('/api/maps/search',json={'query':'Union Station','session_token':token})
+    assert r.status_code==200
+    assert r.json()['places'][0]['id']=='ChIJ_test123'
+    r=c.post('/api/maps/place',json={'place_id':'ChIJ_test123','session_token':token})
+    assert r.json()['label']=='225 S Canal St, Chicago, IL'
+    assert calls[1].url.params['sessionToken']==token
+    assert c.post('/api/maps/place',json={'place_id':'../../secrets','session_token':token}).status_code==422
+    c.post('/api/auth/logout')
+    assert c.post('/api/maps/search',json={'query':'Chicago','session_token':token}).status_code==401
+
+
+def test_google_places_provider_failure_is_actionable(monkeypatch):
+    import httpx
+    monkeypatch.setenv('GOOGLE_PLACES_API_KEY','test-server-key')
+    main.place_requests.clear()
+    original=httpx.AsyncClient
+    monkeypatch.setattr(main.httpx,'AsyncClient',lambda **kwargs: original(transport=httpx.MockTransport(lambda r:httpx.Response(403,json={'error':{'message':'private provider details'}})),**kwargs))
+    c=client()
+    r=c.post('/api/maps/search',json={'query':'Chicago','session_token':'test-session-123'})
+    assert r.status_code==503
+    assert 'Places API (New)' in r.json()['detail']
+    assert 'private provider details' not in r.text

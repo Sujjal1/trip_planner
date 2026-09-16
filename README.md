@@ -102,8 +102,16 @@ GitHub Pages alone cannot host the Python API. Choose a Python-capable host with
 
 **Vehicle details** now opens an editable vehicle card for name, plate, odometer, MPG, and fuel price. Odometer adjustments cannot invalidate recorded trips or change during an active drive.
 
-**Start a trip** opens an embedded Google map. Enter origin and destination names or addresses to search on the map; entering both previews driving directions before you start. Google Maps Embed does not expose selected pins back to the app, so refine the address fields when a search has multiple matches. This uses the existing Maps Embed key; it is not Places autocomplete or in-app turn-by-turn navigation.
+**Start a trip** opens an embedded Google map. Search for origin and destination, then select Google suggestions to preview driving directions before starting. Google Maps Embed does not expose clicked pins back to the app, so choose from the Google search results above the map. This uses Google Places and Maps Embed; Google-powered autocomplete is described below; in-app turn-by-turn navigation is not implemented.
 
 Use **Record a past trip** if you did not have your phone. Supply the actual start/end times and odometer readings; the app calculates costs and updates balances atomically. Overlapping times and contradictory odometer readings are rejected. Retrospective costs use current vehicle MPG and price, clearly shown before saving.
 
 Start/end dashboard photos and fuel receipts can now be read inline without losing your route. After Gemini consent, selecting a photo starts extraction automatically and fills the corresponding fields. Confirm once to save: distance, estimated fuel cost, odometer, and owner balances update together. Photos cannot reliably determine exact fuel consumption; unreadable values still require manual entry. Financial records are not silently posted from uncertain image readings.
+
+### Google-powered location selection
+
+The planner now uses live Google Places autocomplete results, fetched through authenticated Python endpoints to avoid the native widget's browser RPC connection failures. Select a suggestion to resolve its address and Google place ID; the route preview updates only after selection, rather than reloading on every keystroke. Start and destination are saved on the trip. There is also an explicit current-location button and a manual-entry fallback. Map loading feedback and **Reload map** are available before and during a drive.
+
+Enable **Places API (New)** with billing in your Google project, alongside Maps Embed API. Local development reuses the existing key from `frontend/.env` with the `APP_ORIGIN` referrer. For production (`COOKIE_SECURE=true`), configure a separate server-only `GOOGLE_PLACES_API_KEY` in `backend/.env`, restricted to Places API (New) and your server IP. Keep the browser Maps Embed key restricted to your website. Autocomplete session tokens are carried through place-details selection; only the needed place fields are requested. Places has its own pricing and quotas, separate from Maps Embed.
+
+The Google map iframe itself still cannot send a clicked pin back to CoDrive; choose the Google suggestion above the map. Google place IDs identify the selected locations in the preview; resolved addresses are stored in trip history. Background turn-by-turn navigation is not implemented.

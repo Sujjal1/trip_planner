@@ -13,7 +13,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 import httpx
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -463,6 +463,56 @@ def past_trip(vid:int,data:PastTrip,u=Depends(current_user)):
         c.execute('UPDATE vehicles SET odometer=MAX(odometer,?) WHERE id=?',(data.end_odometer,vid))
         notify(c,vid,f"{u['name']} added a past trip. Estimated fuel cost: ${cost/100:.2f}.")
     return {'id':tid,'cost_cents':cost}
+
+
+# Same-origin Google Places adapter avoids browser RPC transport failures.
+# Production deployments should provide a separate server-side Places key.
+place_requests = {}
+class PlaceSearch(Model):
+    query: str = Field(min_length=2,max_length=200)
+    session_token: str = Field(min_length=10,max_length=100,pattern=r'^[a-zA-Z0-9_-]+$')
+class PlaceChoice(Model):
+    place_id: str = Field(min_length=5,max_length=200,pattern=r'^[a-zA-Z0-9_-]+$')
+    session_token: str = Field(min_length=10,max_length=100,pattern=r'^[a-zA-Z0-9_-]+$')
+
+def places_credentials(uid):
+    current=datetime.now(timezone.utc).timestamp()
+    recent=[t for t in place_requests.get(uid,[]) if current-t<60]
+    if len(recent)>=60: raise HTTPException(429,'Please wait a moment before searching again.')
+    place_requests[uid]=recent+[current]
+    key=os.getenv('GOOGLE_PLACES_API_KEY')
+    headers={}
+    if not key and os.getenv('COOKIE_SECURE','false').lower()!='true':
+        key=dotenv_values(Path(__file__).resolve().parent.parent/'frontend'/'.env').get('VITE_GOOGLE_MAPS_API_KEY')
+        headers['Referer']=os.getenv('APP_ORIGIN','http://localhost:8000')+'/'
+    if not key: raise HTTPException(503,'Google search needs GOOGLE_PLACES_API_KEY on the server. For local development it can use the configured Maps browser key.')
+    headers['X-Goog-Api-Key']=key
+    return headers
+
+async def google_places_request(method,url,headers,**kwargs):
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response=await client.request(method,url,headers=headers,**kwargs)
+        if response.status_code in (401,403):
+            raise HTTPException(503,'Google Places access was denied. Check Places API (New), billing, and the API key restrictions in Google Cloud.')
+        if response.status_code==429: raise HTTPException(503,'Google Places quota is temporarily exhausted. Try again later or enter addresses manually.')
+        response.raise_for_status()
+        return response.json()
+    except (httpx.HTTPError,ValueError):
+        raise HTTPException(502,'Google location search could not connect. Try again or enter addresses manually.')
+
+@app.post('/api/maps/search')
+async def search_places(data:PlaceSearch,u=Depends(current_user)):
+    result=await google_places_request('POST','https://places.googleapis.com/v1/places:autocomplete',places_credentials(u['id']),json={'input':data.query,'sessionToken':data.session_token})
+    return {'places':[{'id':p['placeId'],'label':p.get('text',{}).get('text','')} for item in result.get('suggestions',[]) if (p:=item.get('placePrediction'))]}
+
+@app.post('/api/maps/place')
+async def select_place(data:PlaceChoice,u=Depends(current_user)):
+    headers=places_credentials(u['id'])
+    headers['X-Goog-FieldMask']='id,formattedAddress,location'
+    result=await google_places_request('GET','https://places.googleapis.com/v1/places/'+data.place_id,headers,params={'sessionToken':data.session_token})
+    if not result.get('id') or not result.get('formattedAddress'): raise HTTPException(502,'Google could not resolve that location. Choose another result.')
+    return {'id':result['id'],'label':result['formattedAddress'],'location':result.get('location')}
 
 # Build React first to serve the complete app from a single origin.
 static=Path(__file__).resolve().parent.parent/'frontend'/'dist'

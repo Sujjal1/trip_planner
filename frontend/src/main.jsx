@@ -1,3 +1,4 @@
+import { GoogleEmbed } from "./GoogleRouteSearch.jsx";
 import {
   TripPlanner,
   FinishTrip,
@@ -1873,13 +1874,7 @@ function MapView({ trip, mine }) {
       url = `https://www.google.com/maps/embed/v1/directions?key=${encodeURIComponent(key)}&origin=${encodeURIComponent(trip.origin)}&destination=${encodeURIComponent(trip.destination)}&mode=driving`;
   }
   return url ? (
-    <iframe
-      title="Trip map"
-      className="map"
-      src={url}
-      referrerPolicy="strict-origin-when-cross-origin"
-      allowFullScreen
-    />
+    <GoogleEmbed src={url} title="Trip map" />
   ) : (
     <div className="map-placeholder">
       <div className="map-grid" />

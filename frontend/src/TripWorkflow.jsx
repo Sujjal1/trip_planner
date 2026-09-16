@@ -1,3 +1,4 @@
+import GoogleRouteSearch from "./GoogleRouteSearch.jsx";
 import React, { useState, useEffect } from "react";
 import { Camera, MapPin, Navigation, LoaderCircle, Check } from "lucide-react";
 const money = (n) =>
@@ -117,76 +118,6 @@ export function PhotoReading({
   );
 }
 
-function RouteSearch({ origin, destination, setOrigin, setDestination }) {
-  const [preview, setPreview] = useState({ origin, destination });
-  const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  useEffect(() => {
-    const id = setTimeout(
-      () =>
-        setPreview({ origin: origin.trim(), destination: destination.trim() }),
-      900,
-    );
-    return () => clearTimeout(id);
-  }, [origin, destination]);
-  const base = "https://www.google.com/maps/embed/v1/";
-  const url = !key
-    ? ""
-    : preview.origin && preview.destination
-      ? `${base}directions?key=${encodeURIComponent(key)}&origin=${encodeURIComponent(preview.origin)}&destination=${encodeURIComponent(preview.destination)}&mode=driving`
-      : preview.origin || preview.destination
-        ? `${base}search?key=${encodeURIComponent(key)}&q=${encodeURIComponent(preview.origin || preview.destination)}`
-        : `${base}view?key=${encodeURIComponent(key)}&center=39.5,-98.35&zoom=4`;
-  return (
-    <section className="route-search">
-      <label className="field">
-        <span>
-          <MapPin size={14} /> Starting from
-        </span>
-        <input
-          name="origin"
-          value={origin}
-          onChange={(e) => setOrigin(e.target.value)}
-          required
-          placeholder="Search a place or full address"
-          maxLength={200}
-        />
-      </label>
-      <label className="field">
-        <span>
-          <MapPin size={14} /> Going to
-        </span>
-        <input
-          name="destination"
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          required
-          placeholder="Search your destination"
-          maxLength={200}
-        />
-      </label>
-      {url ? (
-        <iframe
-          title="Plan your route in Google Maps"
-          className="map planner-map"
-          src={url}
-          referrerPolicy="strict-origin-when-cross-origin"
-          allowFullScreen
-        />
-      ) : (
-        <div className="info-note">
-          Configure Google Maps to see the route here. You can still enter
-          addresses manually.
-        </div>
-      )}
-      <p className="form-note">
-        Search with a place name or full address. The map updates as you type;
-        both addresses show a driving route. If Google shows multiple results,
-        refine the address above. Check the route before starting.
-      </p>
-    </section>
-  );
-}
-
 export function TripPlanner({
   vehicle,
   prefill = {},
@@ -214,6 +145,12 @@ export function TripPlanner({
       className="modal-body form"
       onSubmit={(e) => {
         e.preventDefault();
+        if (!origin.trim() || !destination.trim()) {
+          setPhotoNote(
+            "Choose a starting location and destination from Google search before saving.",
+          );
+          return;
+        }
         const b = Object.fromEntries(new FormData(e.currentTarget));
         b.start_odometer = +start;
         b.sharing = b.sharing === "on";
@@ -242,7 +179,7 @@ export function TripPlanner({
           Record a past trip
         </button>
       </div>
-      <RouteSearch
+      <GoogleRouteSearch
         origin={origin}
         destination={destination}
         setOrigin={setOrigin}
