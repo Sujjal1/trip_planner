@@ -423,3 +423,18 @@ def test_expense_can_credit_another_owner_with_minimal_fields():
     assert d['expenses'][0]['user_id']==sid
     assert next(o for o in d['owners'] if o['id']==sid)['paid_cents']==2500
     assert owner.post(f'/api/vehicles/{vid}/expenses',json={'payer_id':oid,'amount':25}).status_code==404
+
+
+def test_record_payment_between_other_owners():
+    a=client();vid=vehicle(a);b=client('Beth');c=client('Chris');join(b,a,vid);join(c,a,vid)
+    bid=b.get('/api/me').json()['user']['id'];cid=c.get('/api/me').json()['user']['id']
+    body={'payer_id':bid,'recipient_id':cid,'amount':'12.34'}
+    assert a.post(f'/api/vehicles/{vid}/payments',json=body).status_code==200
+    d=a.get(f'/api/vehicles/{vid}').json()
+    assert d['payments'][0]['user_id']==bid
+    assert next(o for o in d['owners'] if o['id']==bid)['sent_cents']==1234
+    assert next(o for o in d['owners'] if o['id']==cid)['received_cents']==1234
+    assert a.post(f'/api/vehicles/{vid}/payments',json={**body,'recipient_id':bid}).status_code==400
+    outsider=client('Outside');oid=outsider.get('/api/me').json()['user']['id']
+    assert a.post(f'/api/vehicles/{vid}/payments',json={**body,'payer_id':oid}).status_code==404
+    assert outsider.post(f'/api/vehicles/{vid}/payments',json=body).status_code==404

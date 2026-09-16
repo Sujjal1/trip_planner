@@ -360,6 +360,7 @@ def expense(vid:int,data:Expense,u=Depends(current_user)):
     return {'id':eid}
 
 class Payment(Model):
+    payer_id: int | None = None
     recipient_id: int
     amount: Decimal = Field(gt=0,le=100_000,max_digits=8,decimal_places=2)
     note: str = Field(default='',max_length=140)
@@ -369,12 +370,15 @@ def payment(vid:int,data:Payment,u=Depends(current_user)):
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
         member(c,vid,u['id'])
-        if data.recipient_id==u['id']: raise HTTPException(400,'Choose another owner to receive the payment.')
+        payer_id=data.payer_id if data.payer_id is not None else u['id']
+        member(c,vid,payer_id)
+        if data.recipient_id==payer_id: raise HTTPException(400,'Choose different owners for Paid by and Paid to.')
         member(c,vid,data.recipient_id)
         amount=cents(data.amount)
-        pid=c.execute('INSERT INTO payments(vehicle_id,user_id,recipient_id,amount_cents,note,created_at) VALUES(?,?,?,?,?,?)',(vid,u['id'],data.recipient_id,amount,data.note,now())).lastrowid
+        pid=c.execute('INSERT INTO payments(vehicle_id,user_id,recipient_id,amount_cents,note,created_at) VALUES(?,?,?,?,?,?)',(vid,payer_id,data.recipient_id,amount,data.note,now())).lastrowid
         recipient=c.execute('SELECT name FROM users WHERE id=?',(data.recipient_id,)).fetchone()['name']
-        notify(c,vid,f"{u['name']} recorded a ${amount/100:.2f} payment to {recipient}.")
+        payer=c.execute('SELECT name FROM users WHERE id=?',(payer_id,)).fetchone()['name']
+        notify(c,vid,f"{u['name']} recorded ${amount/100:.2f} paid by {payer} to {recipient}.")
     return {'id':pid}
 
 class Removal(Model):

@@ -636,11 +636,7 @@ function App() {
                     <div>
                       <span>Your balance</span>
                       <strong>{money(myOwner?.balance_cents || 0)}</strong>
-                      <small>
-                        {(myOwner?.balance_cents || 0) < 0
-                          ? "Credit"
-                          : "Estimated costs less payments"}
-                      </small>
+
                     </div>
                     <div>
                       <span>Your fuel share</span>
@@ -801,43 +797,6 @@ function App() {
                     onRemove={askRemove}
                     onAdd={() => open("payment")}
                   />
-                  <div className="stats-grid three">
-                    <Stat
-                      label="Estimated fuel used"
-                      value={money(totalFuel)}
-                      icon={Fuel}
-                      note="Charged to the person driving"
-                      color="mint"
-                    />
-                    <Stat
-                      label="Purchases recorded"
-                      value={money(
-                        data.expenses.reduce((s, e) => s + e.amount_cents, 0),
-                      )}
-                      icon={Wallet}
-                      note="Credited to the person paying"
-                      color="peach"
-                    />
-                    <Stat
-                      label="Your net balance"
-                      value={money(myOwner.balance_cents)}
-                      icon={Users}
-                      note="Negative means credit carried forward"
-                      color="lavender"
-                    />
-                  </div>
-                  <div className="info-note">
-                    <ShieldCheck size={21} />
-                    <p>
-                      <strong>Simple, transparent math.</strong> Fuel use =
-                      miles ÷ MPG × saved price. Other expenses are split
-                      equally among owners at the time of entry. Fuel purchases
-                      give the payer credit. Direct payments reduce the sender’s
-                      balance and increase the recipient’s. Balances are
-                      estimates, not payment requests; unused fuel credit
-                      carries forward.
-                    </p>
-                  </div>
                   <section className="card">
                     <div className="card-heading">
                       <h2>Owner balances</h2>
@@ -848,11 +807,6 @@ function App() {
                         <thead>
                           <tr>
                             <th>CO-OWNER</th>
-                            <th>FUEL USED (EST.)</th>
-                            <th>SHARED EXPENSES</th>
-                            <th>PURCHASES PAID</th>
-                            <th>PAYMENTS SENT</th>
-                            <th>RECEIVED</th>
                             <th>NET BALANCE</th>
                           </tr>
                         </thead>
@@ -865,11 +819,6 @@ function App() {
                                 </span>
                                 {o.name}
                               </td>
-                              <td>{money(o.fuel_cents)}</td>
-                              <td>{money(o.shared_cents)}</td>
-                              <td>{money(o.paid_cents)}</td>
-                              <td>{money(o.sent_cents || 0)}</td>
-                              <td>{money(o.received_cents || 0)}</td>
                               <td>
                                 <strong>{money(o.balance_cents)}</strong>
                               </td>
@@ -933,11 +882,7 @@ function App() {
                         </table>
                       </div>
                     ) : (
-                      <Empty
-                        icon={Wallet}
-                        title="A clean slate"
-                        text="Add fuel receipts, maintenance, insurance, and other shared costs."
-                      />
+                      <p className="form-note">No expenses yet.</p>
                     )}
                   </section>
                 </>
@@ -1112,11 +1057,11 @@ function App() {
         <Modal
           title={
             {
-              payment: "Record a payment to another owner",
+              payment: "Record payment",
               remove: "Delete this entry?",
               trip: "Trip options",
               details: "Vehicle details",
-              expense: "Record a shared expense",
+              expense: "Add expense",
               vehicle: "Add your vehicle",
               join: "Join a shared garage",
               routine: "Build your everyday route",
