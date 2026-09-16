@@ -16,7 +16,7 @@ def clean(tmp_path, monkeypatch):
     monkeypatch.setattr(main,'DB',str(tmp_path/'garage.sqlite3'))
     if main.DATABASE_URL:
         with main.db() as c:
-            c.execute('TRUNCATE users, sessions, vehicles, members, trips, expenses, expense_shares, routines, payments, notifications RESTART IDENTITY CASCADE')
+            c.execute('TRUNCATE users, sessions, vehicles, members, trips, expenses, expense_shares, routines, payments, notifications, api_usage RESTART IDENTITY CASCADE')
     main.attempts.clear()
     main.init_db()
 
@@ -322,3 +322,27 @@ def test_trip_removal_restore_and_odometer_correction():
     assert outsider.patch(f'/api/records/trips/{tid}',json={'deleted':True}).status_code==404
     main.init_db() # migrations must be safe to repeat against populated data.
     assert c.get(f'/api/vehicles/{vid}').json()['trips'][0]['id']==tid
+
+
+def test_places_budget_blocks_provider_and_survives_restart(monkeypatch):
+    from datetime import datetime, timezone
+    import httpx
+    monkeypatch.setenv('GOOGLE_PLACES_API_KEY','test-key')
+    main.place_requests.clear()
+    c=client()
+    calls=[]
+    original=httpx.AsyncClient
+    def provider(request):
+        calls.append(request)
+        return httpx.Response(500,json={})
+    monkeypatch.setattr(main.httpx,'AsyncClient',lambda **kwargs: original(transport=httpx.MockTransport(provider),**kwargs))
+    body={'query':'Chicago','session_token':'budget-test-session'}
+    assert c.post('/api/maps/search',json=body).status_code==502
+    period='day:'+datetime.now(timezone.utc).date().isoformat()
+    with main.db() as connection:
+        assert connection.execute('SELECT requests FROM api_usage WHERE period=?',(period,)).fetchone()[0]==1
+        connection.execute('UPDATE api_usage SET requests=100 WHERE period=?',(period,))
+    main.init_db()
+    blocked=c.post('/api/maps/search',json=body)
+    assert blocked.status_code==503 and 'usage allowance' in blocked.json()['detail']
+    assert len(calls)==1

@@ -63,6 +63,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS routines(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),origin TEXT,destination TEXT,days TEXT,time TEXT,miles REAL,purpose TEXT);
         CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),recipient_id INTEGER REFERENCES users(id),amount_cents INTEGER NOT NULL,note TEXT,created_at TEXT,deleted_at TEXT);
         CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),message TEXT,created_at TEXT);
+        CREATE TABLE IF NOT EXISTS api_usage(period TEXT PRIMARY KEY,requests INTEGER NOT NULL DEFAULT 0);
         ''')
         for table in ('trips','expenses'):
             if DATABASE_URL:
@@ -578,6 +579,18 @@ def places_credentials(uid):
     return headers
 
 async def google_places_request(method,url,headers,**kwargs):
+    # Reserve before contacting Google, including failed calls. Persist across
+    # restarts and serialize reservations across users/instances. These limits
+    # cover this app only, not other apps sharing a Google billing account.
+    today = datetime.now(timezone.utc).date().isoformat()
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        for period, limit in [('day:'+today,100), ('month:'+today[:7],1000)]:
+            c.execute('INSERT INTO api_usage(period,requests) VALUES(?,0) ON CONFLICT(period) DO NOTHING',(period,))
+            used=c.execute('SELECT requests FROM api_usage WHERE period=?',(period,)).fetchone()[0]
+            if used>=limit:
+                raise HTTPException(503,'Google search has reached the app’s usage allowance. Enter the addresses manually; maps and trip recording still work.')
+            c.execute('UPDATE api_usage SET requests=requests+1 WHERE period=?',(period,))
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response=await client.request(method,url,headers=headers,**kwargs)
