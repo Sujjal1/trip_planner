@@ -6,11 +6,11 @@ export function PaymentForm({owners,userId,busy,onSubmit}) {
   const [amount,setAmount]=useState(''),[note,setNote]=useState('');
   if(!recipients.length) return <div className="modal-body"><p>Invite another owner before recording a payment to them.</p></div>;
   return <form className="modal-body form" onSubmit={e=>{e.preventDefault();onSubmit({recipient_id:Number(recipient),amount,note});}}>
-    <div className="info-note"><p>Record money you already gave another owner, such as cash or a bank transfer. This does not send money or add a fuel purchase.</p></div>
+
     <label className="field"><span>I paid</span><select value={recipient} onChange={e=>setRecipient(e.target.value)}>{recipients.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
     <label className="field"><span>Amount paid (USD)</span><input required type="number" min="0.01" max="100000" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)}/></label>
-    <label className="field"><span>Note (optional)</span><input maxLength={140} value={note} placeholder="Cash for last week’s trips" onChange={e=>setNote(e.target.value)}/></label>
-    <p>Your balance decreases by this amount; the recipient’s balance increases by the same amount. Agree the amount together—fuel estimates can leave a shared surplus or shortfall.</p>
+    <details><summary>Optional note</summary><label className="field"><span>Note (optional)</span><input maxLength={140} value={note} placeholder="Cash for last week’s trips" onChange={e=>setNote(e.target.value)}/></label></details>
+
     <button className="btn" disabled={busy}>Record payment</button>
   </form>;
 }

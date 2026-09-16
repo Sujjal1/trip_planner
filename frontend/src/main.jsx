@@ -1129,7 +1129,7 @@ function App() {
           subtitle={
             {
               trip: "Confirm your odometer and choose what you share.",
-              expense: "Record what you paid. We’ll do the fair-share math.",
+
               scan: "Gemini readings are suggestions. Always check the original photo.",
             }[modal]
           }
@@ -1311,6 +1311,8 @@ function App() {
           )}
           {modal === "expense" && (
             <ReceiptExpense
+              owners={owners}
+              userId={me.user.id}
               api={api}
               config={config}
               initial={prefill}

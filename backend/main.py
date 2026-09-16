@@ -336,8 +336,9 @@ def location(tid:int,data:Location,u=Depends(current_user)):
     return {'ok':True}
 
 class Expense(Model):
-    description: str = Field(min_length=2,max_length=140)
-    category: str = Field(pattern='^(Fuel purchase|Maintenance|Insurance|Parking|Other)$')
+    payer_id: int | None = None
+    description: str = Field(default="Fuel purchase",min_length=2,max_length=140)
+    category: str = Field(default='Fuel purchase',pattern='^(Fuel purchase|Maintenance|Insurance|Parking|Other)$')
     amount: float = Field(gt=0,le=100_000)
 
 @app.post('/api/vehicles/{vid}/expenses')
@@ -345,9 +346,11 @@ def expense(vid:int,data:Expense,u=Depends(current_user)):
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
         member(c,vid,u['id'])
+        payer_id=data.payer_id if data.payer_id is not None else u['id']
+        member(c,vid,payer_id)
         amount=cents(data.amount)
         if amount<1: raise HTTPException(400,'Amount must be at least one cent.')
-        eid=c.execute('INSERT INTO expenses(vehicle_id,user_id,description,category,amount_cents,created_at) VALUES(?,?,?,?,?,?)',(vid,u['id'],data.description,data.category,amount,now())).lastrowid
+        eid=c.execute('INSERT INTO expenses(vehicle_id,user_id,description,category,amount_cents,created_at) VALUES(?,?,?,?,?,?)',(vid,payer_id,data.description,data.category,amount,now())).lastrowid
         # Fuel purchases are credits against estimated consumption, not a second charge.
         if data.category!='Fuel purchase':
             ids=[x[0] for x in c.execute('SELECT user_id FROM members WHERE vehicle_id=? ORDER BY user_id',(vid,))]

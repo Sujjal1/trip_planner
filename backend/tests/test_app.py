@@ -412,3 +412,14 @@ def test_trip_can_charge_only_other_riders():
     d=a.get(f'/api/vehicles/{vid}').json()
     assert {o['id']:o['fuel_cents'] for o in d['owners']}=={uid:0,bid:360}
     assert [p['user_id'] for p in d['trips'][0]['participants']]==[bid]
+
+
+def test_expense_can_credit_another_owner_with_minimal_fields():
+    owner=client();vid=vehicle(owner);sam=client('Sam');join(sam,owner,vid)
+    sid=sam.get('/api/me').json()['user']['id']
+    outsider=client('Outsider');oid=outsider.get('/api/me').json()['user']['id']
+    assert owner.post(f'/api/vehicles/{vid}/expenses',json={'payer_id':sid,'amount':25}).status_code==200
+    d=owner.get(f'/api/vehicles/{vid}').json()
+    assert d['expenses'][0]['user_id']==sid
+    assert next(o for o in d['owners'] if o['id']==sid)['paid_cents']==2500
+    assert owner.post(f'/api/vehicles/{vid}/expenses',json={'payer_id':oid,'amount':25}).status_code==404

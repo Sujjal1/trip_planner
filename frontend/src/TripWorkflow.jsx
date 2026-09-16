@@ -392,81 +392,42 @@ export function FinishTrip({
   );
 }
 
-export function ReceiptExpense({ api, config, initial = {}, busy, onSubmit }) {
+export function ReceiptExpense({ api, config, owners, userId, initial = {}, busy, onSubmit }) {
   const [reading, setReading] = useState(false);
+  const [payer, setPayer] = useState(String(userId));
   const [amount, setAmount] = useState(initial.amount ?? ""),
     [category, setCategory] = useState(initial.category || "Fuel purchase"),
     [description, setDescription] = useState(initial.description || "");
   return (
-    <div className="modal-body form">
-      <PhotoReading
-        api={api}
-        config={config}
-        kind="receipt_total"
-        onBusy={setReading}
-        label="Read a fuel receipt"
-        onRead={(r) => {
-          if (r.receipt_total != null) {
-            setAmount(r.receipt_total);
-            setCategory("Fuel purchase");
-            setDescription("Fuel receipt");
-          }
-        }}
-      />
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onSubmit({ description, category, amount: +amount });
-        }}
-      >
-        <label className="field">
-          <span>Description</span>
-          <input
-            required
-            minLength="2"
-            maxLength="140"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Amount paid (USD)</span>
-          <input
-            required
-            type="number"
-            min="0.01"
-            max="100000"
-            step="0.01"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Category</span>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          >
-            {[
-              "Fuel purchase",
-              "Maintenance",
-              "Insurance",
-              "Parking",
-              "Other",
-            ].map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-        </label>
-        <p className="form-note">
-          Confirm the extracted amount. Saving automatically credits your
-          payment and updates all owner balances.
-        </p>
-        <button className="btn" disabled={busy || reading}>
-          Confirm & save expense
-        </button>
-      </form>
-    </div>
+    <form className="modal-body form" onSubmit={(e) => {
+      e.preventDefault();
+      onSubmit({ payer_id: Number(payer), description: description.trim() || category, category, amount: +amount });
+    }}>
+      <label className="field"><span>Paid by</span>
+        <select value={payer} onChange={e => setPayer(e.target.value)}>
+          {owners.map(o => <option key={o.id} value={o.id}>{o.id === userId ? `${o.name} (you)` : o.name}</option>)}
+        </select>
+      </label>
+      <label className="field"><span>Amount paid (USD)</span>
+        <input required type="number" min="0.01" max="100000" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
+      </label>
+      <details>
+        <summary>Optional details & receipt</summary>
+        <div className="form">
+          <label className="field"><span>Category</span>
+            <select value={category} onChange={e => setCategory(e.target.value)}>
+              {["Fuel purchase", "Maintenance", "Insurance", "Parking", "Other"].map(x => <option key={x}>{x}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Description (optional)</span>
+            <input minLength="2" maxLength="140" value={description} onChange={e => setDescription(e.target.value)} />
+          </label>
+          <PhotoReading api={api} config={config} kind="receipt_total" onBusy={setReading} label="Read a fuel receipt" onRead={r => {
+            if (r.receipt_total != null) { setAmount(r.receipt_total); setCategory("Fuel purchase"); setDescription("Fuel receipt"); }
+          }} />
+        </div>
+      </details>
+      <button className="btn" disabled={busy || reading}>Save expense</button>
+    </form>
   );
 }
