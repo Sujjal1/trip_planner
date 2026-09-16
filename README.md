@@ -97,3 +97,13 @@ The Python service can serve the built React app and API from the same origin. B
 SQLite is suitable for a small shared garage. Use PostgreSQL and shared session/rate-limit infrastructure when scaling across instances. This initial version is for a private pilot, not an audited financial or fleet-management system.
 
 GitHub Pages alone cannot host the Python API. Choose a Python-capable host with persistent storage, or host the frontend and proxy its `/api` requests to the backend. All current data lives in SQLite; there is no automatic cloud synchronization beyond clients talking to the same server.
+
+## Map-first and photo-assisted trips
+
+**Vehicle details** now opens an editable vehicle card for name, plate, odometer, MPG, and fuel price. Odometer adjustments cannot invalidate recorded trips or change during an active drive.
+
+**Start a trip** opens an embedded Google map. Enter origin and destination names or addresses to search on the map; entering both previews driving directions before you start. Google Maps Embed does not expose selected pins back to the app, so refine the address fields when a search has multiple matches. This uses the existing Maps Embed key; it is not Places autocomplete or in-app turn-by-turn navigation.
+
+Use **Record a past trip** if you did not have your phone. Supply the actual start/end times and odometer readings; the app calculates costs and updates balances atomically. Overlapping times and contradictory odometer readings are rejected. Retrospective costs use current vehicle MPG and price, clearly shown before saving.
+
+Start/end dashboard photos and fuel receipts can now be read inline without losing your route. After Gemini consent, selecting a photo starts extraction automatically and fills the corresponding fields. Confirm once to save: distance, estimated fuel cost, odometer, and owner balances update together. Photos cannot reliably determine exact fuel consumption; unreadable values still require manual entry. Financial records are not silently posted from uncertain image readings.

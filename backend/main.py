@@ -415,6 +415,55 @@ def demo(response:Response,request:Request):
     session(response,uid)
     return {'ok':True}
 
+
+@app.patch('/api/vehicles/{vid}/details')
+def vehicle_details(vid:int,data:Vehicle,u=Depends(current_user)):
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        v=member(c,vid,u['id'])
+        if data.odometer!=v['odometer']:
+            if c.execute('SELECT 1 FROM trips WHERE vehicle_id=? AND ended_at IS NULL',(vid,)).fetchone():
+                raise HTTPException(409,'Finish the active trip before adjusting the odometer.')
+            latest=c.execute('SELECT MAX(end_odometer) FROM trips WHERE vehicle_id=?',(vid,)).fetchone()[0]
+            if latest is not None and data.odometer<latest:
+                raise HTTPException(400,'Odometer cannot be below a recorded trip reading.')
+        c.execute('UPDATE vehicles SET name=?,plate=?,mpg=?,odometer=?,fuel_price=?,price_source=?,price_date=? WHERE id=?',(data.name,data.plate,data.mpg,data.odometer,data.fuel_price,v['price_source'] if data.fuel_price==v['fuel_price'] else 'Owner entered',v['price_date'] if data.fuel_price==v['fuel_price'] else now(),vid))
+        notify(c,vid,f"{u['name']} updated the vehicle details.")
+    return {'ok':True}
+
+class PastTrip(TripStart):
+    end_odometer: float = Field(ge=0,le=2_000_000)
+    started_at: datetime
+    ended_at: datetime
+
+@app.post('/api/vehicles/{vid}/trips/manual')
+def past_trip(vid:int,data:PastTrip,u=Depends(current_user)):
+    if data.started_at.tzinfo is None or data.ended_at.tzinfo is None:
+        raise HTTPException(400,'Trip dates must include a time zone.')
+    start_at=data.started_at.astimezone(timezone.utc)
+    end_at=data.ended_at.astimezone(timezone.utc)
+    if not start_at<end_at<=datetime.now(timezone.utc):
+        raise HTTPException(400,'Choose a past end time after the start time.')
+    if data.end_odometer<data.start_odometer:
+        raise HTTPException(400,'Ending odometer cannot be below the starting reading.')
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        v=member(c,vid,u['id'])
+        for t in c.execute('SELECT * FROM trips WHERE vehicle_id=?',(vid,)):
+            ts=datetime.fromisoformat(t['started_at'])
+            te=datetime.fromisoformat(t['ended_at']) if t['ended_at'] else datetime.max.replace(tzinfo=timezone.utc)
+            if start_at<te and end_at>ts:
+                raise HTTPException(409,'This time overlaps another recorded trip.')
+            if te<=start_at and t['end_odometer']>data.start_odometer:
+                raise HTTPException(400,'Start reading is below an earlier trip’s end reading.')
+            if ts>=end_at and t['start_odometer']<data.end_odometer:
+                raise HTTPException(400,'End reading exceeds a later trip’s start reading.')
+        cost=fuel_cost(Decimal(str(data.end_odometer))-Decimal(str(data.start_odometer)),v['mpg'],v['fuel_price'])
+        tid=c.execute('INSERT INTO trips(vehicle_id,user_id,origin,destination,purpose,start_odometer,end_odometer,mpg,fuel_price,cost_cents,started_at,ended_at,sharing) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(vid,u['id'],data.origin,data.destination,data.purpose,data.start_odometer,data.end_odometer,v['mpg'],v['fuel_price'],cost,start_at.isoformat(),end_at.isoformat(),data.sharing)).lastrowid
+        c.execute('UPDATE vehicles SET odometer=MAX(odometer,?) WHERE id=?',(data.end_odometer,vid))
+        notify(c,vid,f"{u['name']} added a past trip. Estimated fuel cost: ${cost/100:.2f}.")
+    return {'id':tid,'cost_cents':cost}
+
 # Build React first to serve the complete app from a single origin.
 static=Path(__file__).resolve().parent.parent/'frontend'/'dist'
 if static.exists(): app.mount('/',StaticFiles(directory=static,html=True),name='frontend')

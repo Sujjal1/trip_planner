@@ -145,3 +145,38 @@ def test_demo_isolated_and_opt_in(monkeypatch):
     assert a.get(f'/api/vehicles/{vb}').status_code==404
     data=a.get(f'/api/vehicles/{va}').json()
     assert sum(o['miles'] for o in data['owners'])==460
+
+
+def test_vehicle_details_edit_and_odometer_protection():
+    c=client();vid=vehicle(c);outsider=client('Other')
+    body={'name':'Family car','plate':'NEW 123','mpg':32,'odometer':10000,'fuel_price':4}
+    assert outsider.patch(f'/api/vehicles/{vid}/details',json=body).status_code==404
+    assert c.patch(f'/api/vehicles/{vid}/details',json=body).status_code==200
+    assert c.get(f'/api/vehicles/{vid}').json()['vehicle']['name']=='Family car'
+    tid=start(c,vid).json()['id']
+    assert c.patch(f'/api/vehicles/{vid}/details',json={**body,'odometer':10001}).status_code==409
+    c.post(f'/api/trips/{tid}/finish',json={'end_odometer':10020})
+    assert c.patch(f'/api/vehicles/{vid}/details',json=body).status_code==400
+
+
+def test_past_trip_charges_and_overlap_guards():
+    from datetime import datetime,timedelta,timezone
+    c=client();vid=vehicle(c)
+    t=datetime.now(timezone.utc)-timedelta(days=2)
+    body={'origin':'Home','destination':'Office','purpose':'Commute','start_odometer':10000,'end_odometer':10060,'started_at':t.isoformat(),'ended_at':(t+timedelta(hours=1)).isoformat(),'sharing':False}
+    r=c.post(f'/api/vehicles/{vid}/trips/manual',json=body)
+    assert r.status_code==200,r.text
+    assert r.json()['cost_cents']==720
+    data=c.get(f'/api/vehicles/{vid}').json()
+    assert data['vehicle']['odometer']==10060
+    assert data['owners'][0]['balance_cents']==720
+    assert c.post(f'/api/vehicles/{vid}/trips/manual',json=body).status_code==409
+    earlier={**body,'start_odometer':9980,'end_odometer':9990,'started_at':(t-timedelta(days=1)).isoformat(),'ended_at':(t-timedelta(days=1)+timedelta(hours=1)).isoformat()}
+    assert c.post(f'/api/vehicles/{vid}/trips/manual',json=earlier).status_code==200
+    assert c.get(f'/api/vehicles/{vid}').json()['vehicle']['odometer']==10060
+    bad={**earlier,'start_odometer':10001,'end_odometer':10010,'started_at':(t-timedelta(hours=2)).isoformat(),'ended_at':(t-timedelta(hours=1)).isoformat()}
+    assert c.post(f'/api/vehicles/{vid}/trips/manual',json=bad).status_code==400
+    future={**body,'started_at':(t+timedelta(days=3)).isoformat(),'ended_at':(t+timedelta(days=4)).isoformat()}
+    assert c.post(f'/api/vehicles/{vid}/trips/manual',json=future).status_code==400
+    naive={**body,'started_at':'2020-01-01T10:00:00','ended_at':'2020-01-01T11:00:00'}
+    assert c.post(f'/api/vehicles/{vid}/trips/manual',json=naive).status_code==400

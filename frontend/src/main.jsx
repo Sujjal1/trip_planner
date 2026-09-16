@@ -1,3 +1,9 @@
+import {
+  TripPlanner,
+  FinishTrip,
+  ReceiptExpense,
+  PhotoReading,
+} from "./TripWorkflow.jsx";
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -592,9 +598,9 @@ function App() {
                 </div>
                 <div className="heading-actions">
                   {page === "Overview" || page === "Trips" ? (
-                    <Button disabled={!!active} onClick={() => open("trip")}>
+                    <Button onClick={() => open("trip")}>
                       <Plus size={18} />
-                      Start a trip
+                      {active ? "Record a past trip" : "Start a trip"}
                     </Button>
                   ) : page === "Expenses" ? (
                     <Button onClick={() => open("expense")}>
@@ -661,7 +667,7 @@ function App() {
                     {owners.length} co-owner{owners.length !== 1 ? "s" : ""}
                   </span>
                 </div>
-                <button className="text-btn" onClick={() => nav("Settings")}>
+                <button className="text-btn" onClick={() => open("details")}>
                   Vehicle details
                   <ChevronRight size={15} />
                 </button>
@@ -1217,7 +1223,8 @@ function App() {
         <Modal
           title={
             {
-              trip: "Let’s hit the road",
+              trip: "Plan your journey",
+              details: "Vehicle details",
               expense: "Record a shared expense",
               vehicle: "Add your vehicle",
               join: "Join a shared garage",
@@ -1268,6 +1275,37 @@ function App() {
               }
             />
           )}
+          {modal === "details" && (
+            <>
+              <div className="modal-body vehicle-summary">
+                <Car size={28} />
+                <strong>{v.name}</strong>
+                <span>
+                  {v.plate} · {owners.length} co-owners · {number(v.odometer)}{" "}
+                  mi
+                </span>
+              </div>
+              <DataForm
+                initial={v}
+                busy={busy}
+                submit="Save vehicle details"
+                fields={[
+                  ["name", "Vehicle name", "text"],
+                  ["plate", "License plate", "text"],
+                  ["odometer", "Current odometer (miles)", "number"],
+                  ["mpg", "Fuel economy (US MPG)", "number"],
+                  ["fuel_price", "Fuel price (USD / gallon)", "number"],
+                ]}
+                note="Changes to fuel economy and price apply to future trips. Existing trip charges stay unchanged."
+                onSubmit={(b) =>
+                  run(
+                    () => api("/vehicles/" + vid + "/details", "PATCH", b),
+                    "Vehicle details updated.",
+                  )
+                }
+              />
+            </>
+          )}
           {modal === "join" && (
             <DataForm
               busy={busy}
@@ -1291,7 +1329,16 @@ function App() {
             />
           )}
           {modal === "trip" && (
-            <TripForm
+            <TripPlanner
+              api={api}
+              config={config}
+              hasActive={!!active}
+              onManual={(b) =>
+                run(
+                  () => api("/vehicles/" + vid + "/trips/manual", "POST", b),
+                  "Past trip saved. Mileage and balances updated.",
+                )
+              }
               vehicle={v}
               prefill={prefill}
               busy={busy}
@@ -1305,35 +1352,15 @@ function App() {
             />
           )}
           {modal === "expense" && (
-            <DataForm
-              busy={busy}
-              submit="Save expense"
+            <ReceiptExpense
+              api={api}
+              config={config}
               initial={prefill}
-              fields={[
-                [
-                  "description",
-                  "What did you pay for?",
-                  "text",
-                  "Fuel at Shell",
-                ],
-                ["amount", "Amount paid (USD)", "number", "42.50"],
-                [
-                  "category",
-                  "Category",
-                  [
-                    "Fuel purchase",
-                    "Maintenance",
-                    "Insurance",
-                    "Parking",
-                    "Other",
-                  ],
-                ],
-              ]}
-              note="Fuel purchases credit your account. Other costs are split equally among the current co-owners."
+              busy={busy}
               onSubmit={(b) =>
                 run(
                   () => api("/vehicles/" + vid + "/expenses", "POST", b),
-                  "Expense recorded.",
+                  "Expense recorded. Balances updated.",
                 )
               }
             />
@@ -1376,6 +1403,7 @@ function App() {
           )}
           {modal === "drive" && active && (
             <DrivePanel
+              config={config}
               trip={active}
               mine={mine}
               busy={busy}
@@ -1792,79 +1820,6 @@ function DataForm({ fields, onSubmit, busy, submit, initial = {}, note }) {
     </form>
   );
 }
-function TripForm({ vehicle, prefill, busy, onSubmit, onScan }) {
-  return (
-    <form
-      className="modal-body form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const b = Object.fromEntries(new FormData(e.currentTarget));
-        b.start_odometer = +b.start_odometer;
-        b.sharing = b.sharing === "on";
-        onSubmit(b);
-      }}
-    >
-      <Field
-        label="Starting from"
-        name="origin"
-        defaultValue={prefill.origin || ""}
-        required
-        placeholder="Address or place"
-        maxLength={200}
-      />
-      <Field
-        label="Going to"
-        name="destination"
-        defaultValue={prefill.destination || ""}
-        required
-        placeholder="Where are you headed?"
-        maxLength={200}
-      />
-      <div className="form-row">
-        <Field label="Purpose">
-          <select name="purpose" defaultValue={prefill.purpose || "Commute"}>
-            {["Commute", "Errands", "Personal", "Road trip"].map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-        </Field>
-        <Field
-          label="Starting odometer (mi)"
-          name="start_odometer"
-          type="number"
-          step="0.1"
-          min={vehicle.odometer}
-          max={2000000}
-          defaultValue={prefill.start_odometer ?? vehicle.odometer}
-          required
-        />
-      </div>
-      <button className="text-btn" type="button" onClick={onScan}>
-        <Camera size={16} />
-        Read an odometer photo instead
-      </button>
-      <label className="check-label">
-        <input name="sharing" type="checkbox" />
-        <div>
-          <strong>Share live location with co-owners</strong>
-          <small>
-            Off by default. You can stop sharing at any time. Keep this app open
-            for GPS updates.
-          </small>
-        </div>
-      </label>
-      <p className="form-note">
-        Fuel estimate uses {vehicle.mpg} MPG and{" "}
-        {money(vehicle.fuel_price * 100)}/gallon. Confirm your actual odometer
-        before starting.
-      </p>
-      <Button disabled={busy} type="submit">
-        <Navigation size={17} />
-        Start my drive
-      </Button>
-    </form>
-  );
-}
 function RoutineForm({ busy, onSubmit }) {
   const [days, setDays] = useState(["Mon", "Tue", "Wed", "Thu", "Fri"]);
   return (
@@ -1945,6 +1900,7 @@ function MapView({ trip, mine }) {
   );
 }
 function DrivePanel({
+  config,
   trip,
   mine,
   busy,
@@ -2015,158 +1971,23 @@ function DrivePanel({
             Open turn-by-turn navigation in Google Maps
             <ArrowUpRight size={16} />
           </a>
-          <DataForm
+          <FinishTrip
+            trip={trip}
+            prefill={prefill}
+            api={api}
+            config={config}
             busy={busy}
-            initial={prefill}
-            submit="Finish drive & calculate cost"
-            fields={[
-              [
-                "end_odometer",
-                "Ending odometer (miles)",
-                "number",
-                String(trip.start_odometer),
-              ],
-            ]}
-            note={`Start reading: ${number(trip.start_odometer)} mi. Check this reading carefully; completing a trip posts its estimated cost.`}
-            onSubmit={onFinish}
+            onFinish={onFinish}
           />
-          <button className="text-btn" onClick={onScan}>
-            <Camera size={16} />
-            Read end-of-trip photo
-          </button>
         </>
       )}
     </div>
   );
 }
 function ScanForm({ config, onUse }) {
-  const [image, setImage] = useState(""),
-    [consent, setConsent] = useState(false),
-    [reading, setReading] = useState(null),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  async function scan() {
-    setBusy(true);
-    setError("");
-    try {
-      setReading(await api("/scan", "POST", { image, consent }));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
-    <div className="modal-body form">
-      {!config.gemini && (
-        <div className="info-note">
-          <Sparkles size={21} />
-          <p>
-            Photo reading needs a Gemini API key in <code>backend/.env</code>.
-            You can enter odometer and receipt values manually now.
-          </p>
-        </div>
-      )}
-      <label className="upload">
-        <Camera size={30} />
-        <strong>
-          {image
-            ? "Choose a different photo"
-            : "Choose a dashboard or receipt photo"}
-        </strong>
-        <span>JPEG, PNG, WebP · up to 5 MB</span>
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={(e) => {
-            setReading(null);
-            setError("");
-            setImage("");
-            const f = e.target.files[0];
-            if (!f) return;
-            if (f.size > 5000000) {
-              setError("Please choose a photo under 5 MB.");
-              return;
-            }
-            const r = new FileReader();
-            r.onload = () => setImage(r.result);
-            r.readAsDataURL(f);
-          }}
-        />
-      </label>
-      {image && (
-        <img className="photo-preview" src={image} alt="Photo to read" />
-      )}
-      <label className="check-label">
-        <input
-          type="checkbox"
-          checked={consent}
-          onChange={(e) => setConsent(e.target.checked)}
-        />
-        <div>
-          <strong>Send this photo to Google Gemini</strong>
-          <small>
-            Free-tier inputs may be used to improve Google products. Crop out
-            faces and personal details. CoDrive strips image metadata and does
-            not save the photo.
-          </small>
-        </div>
-      </label>
-      {error && (
-        <div className="error" role="alert">
-          {error}
-        </div>
-      )}
-      <Button
-        disabled={!image || !consent || !config.gemini || busy}
-        onClick={scan}
-      >
-        {busy ? (
-          <LoaderCircle className="spin" size={17} />
-        ) : (
-          <Sparkles size={17} />
-        )}
-        Read photo
-      </Button>
-      {reading && (
-        <div className="reading">
-          <h3>Check these suggested readings</h3>
-          {[
-            ["odometer", "Odometer (mi)"],
-            ["receipt_total", "Receipt total ($)"],
-            ["gallons", "US gallons"],
-            ["fuel_percent", "Fuel gauge (%)"],
-          ].map(([k, label]) =>
-            reading[k] != null ? (
-              <Field
-                key={k}
-                label={label}
-                type="number"
-                min="0"
-                step="any"
-                value={reading[k]}
-                onChange={(e) =>
-                  setReading({
-                    ...reading,
-                    [k]: e.target.value === "" ? null : +e.target.value,
-                  })
-                }
-              />
-            ) : null,
-          )}
-          <p>{reading.notes}</p>
-          <p className="muted">
-            Fuel gauges are approximate. Gauge readings are informational and
-            never used to calculate charges.
-          </p>
-          <Button
-            disabled={reading.odometer == null && reading.receipt_total == null}
-            onClick={() => onUse(reading)}
-          >
-            <Check size={16} />I checked it — use these values
-          </Button>
-        </div>
-      )}
+    <div className="modal-body">
+      <PhotoReading api={api} config={config} onRead={onUse} />
     </div>
   );
 }
