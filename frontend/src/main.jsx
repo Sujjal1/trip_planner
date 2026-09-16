@@ -719,6 +719,12 @@ function App() {
                       </button>
                     </div>
                   </section>
+                  <div>
+                    <Button variant="secondary" onClick={() => open("expense")}>
+                      <Plus size={18} />
+                      Add expense
+                    </Button>
+                  </div>
                   <section className="card simple-history">
                     <div className="card-heading">
                       <h2>Recent trips</h2>

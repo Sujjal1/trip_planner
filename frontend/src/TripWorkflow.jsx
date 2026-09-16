@@ -50,10 +50,6 @@ export function PhotoReading({
       <strong>
         <Camera size={16} /> {label}
       </strong>
-      <p>
-        Take or upload a photo. We read it and fill in the numbers
-        automatically.
-      </p>
       <label className="check-label">
         <input
           type="checkbox"
@@ -65,8 +61,7 @@ export function PhotoReading({
           }}
         />
         <span>
-          Allow this photo to be sent to Gemini. Free-tier images may be used to
-          improve Google products.
+          Read with Gemini (Google may use photos to improve its products).
         </span>
       </label>
       <input
@@ -110,8 +105,7 @@ export function PhotoReading({
       )}
       {result && (
         <p role="status">
-          <Check size={16} /> Read successfully. {result.notes} Check the filled
-          values before saving.
+          <Check size={16} /> Photo read. Check the numbers before saving.
         </p>
       )}
     </section>
