@@ -118,6 +118,57 @@ export function PhotoReading({
   );
 }
 
+export function OdometerInput({
+  label,
+  value,
+  onChange,
+  min = 0,
+  api,
+  config,
+  onBusy,
+}) {
+  const [photo, setPhoto] = useState(false);
+  return (
+    <div className="odometer-field">
+      <label className="field">
+        <span>{label} (miles)</span>
+        <div className="odometer-control">
+          <input
+            aria-label={label}
+            required
+            type="number"
+            inputMode="decimal"
+            min={min}
+            max="2000000"
+            step="0.1"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={`Photo for ${label.toLowerCase()}`}
+            aria-expanded={photo}
+            onClick={() => setPhoto(!photo)}
+          >
+            <Camera size={20} />
+          </button>
+        </div>
+      </label>
+      <div hidden={!photo}>
+        <PhotoReading
+          api={api}
+          config={config}
+          kind="odometer"
+          label={label + " photo"}
+          onBusy={onBusy}
+          onRead={(r) => onChange(r.odometer)}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function TripPlanner({
   vehicle,
   prefill = {},
@@ -127,33 +178,37 @@ export function TripPlanner({
   onSubmit,
   onManual,
   hasActive,
+  owners = [],
+  userId,
+  compact = false,
 }) {
-  const [mode, setMode] = useState(hasActive ? "past" : "live"),
-    [origin, setOrigin] = useState(prefill.origin || ""),
-    [destination, setDestination] = useState(prefill.destination || ""),
-    [start, setStart] = useState(prefill.start_odometer ?? vehicle.odometer),
-    [end, setEnd] = useState(""),
-    [photoNote, setPhotoNote] = useState("");
-  const [startReading, setStartReading] = useState(false),
-    [endReading, setEndReading] = useState(false);
+  const [mode, setMode] = useState(hasActive ? "past" : "live");
+  const [origin, setOrigin] = useState(prefill.origin || "");
+  const [destination, setDestination] = useState(prefill.destination || "");
+  const [start, setStart] = useState(
+    prefill.start_odometer ?? vehicle.odometer,
+  );
+  const [end, setEnd] = useState("");
+  const [selected, setSelected] = useState([userId]);
+  const [readingStart, setReadingStart] = useState(false),
+    [readingEnd, setReadingEnd] = useState(false);
+  const [route, setRoute] = useState(false);
   const estimate =
     end !== "" && +end >= +start
       ? ((+end - +start) / vehicle.mpg) * vehicle.fuel_price
       : null;
   return (
     <form
-      className="modal-body form"
+      className="form trip-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!origin.trim() || !destination.trim()) {
-          setPhotoNote(
-            "Choose a starting location and destination from Google search before saving.",
-          );
-          return;
-        }
         const b = Object.fromEntries(new FormData(e.currentTarget));
+        b.origin = origin.trim() || "Not specified";
+        b.destination = destination.trim() || "Trip";
+        b.purpose = b.purpose || "Personal";
         b.start_odometer = +start;
         b.sharing = b.sharing === "on";
+        b.participant_ids = selected;
         if (mode === "past") {
           b.end_odometer = +end;
           b.started_at = new Date(b.started_at).toISOString();
@@ -162,196 +217,177 @@ export function TripPlanner({
         } else onSubmit(b);
       }}
     >
-      <div className="tabs">
-        <button
-          type="button"
-          disabled={hasActive}
-          className={mode === "live" ? "active" : ""}
-          onClick={() => setMode("live")}
-        >
-          Drive now
-        </button>
-        <button
-          type="button"
-          className={mode === "past" ? "active" : ""}
-          onClick={() => setMode("past")}
-        >
-          Record a past trip
-        </button>
-      </div>
-      <GoogleRouteSearch
-        origin={origin}
-        destination={destination}
-        setOrigin={setOrigin}
-        setDestination={setDestination}
-      />
-      <label className="field">
-        <span>Purpose</span>
-        <select name="purpose" defaultValue={prefill.purpose || "Commute"}>
-          {["Commute", "Errands", "Personal", "Road trip"].map((x) => (
-            <option key={x}>{x}</option>
-          ))}
-        </select>
-      </label>
-      <PhotoReading
+      {!compact && (
+        <div className="tabs">
+          <button
+            type="button"
+            disabled={hasActive}
+            className={mode === "live" ? "active" : ""}
+            onClick={() => setMode("live")}
+          >
+            Start trip
+          </button>
+          <button
+            type="button"
+            className={mode === "past" ? "active" : ""}
+            onClick={() => setMode("past")}
+          >
+            Past trip
+          </button>
+        </div>
+      )}
+      <OdometerInput
+        label="Starting odometer"
+        value={start}
+        onChange={setStart}
+        min={mode === "live" ? vehicle.odometer : 0}
         api={api}
         config={config}
-        kind="odometer"
-        onBusy={setStartReading}
-        label="Starting odometer photo"
-        onRead={(r) => {
-          if (r.odometer != null) {
-            setStart(r.odometer);
-            setPhotoNote("Starting odometer filled from your photo.");
-          } else
-            setPhotoNote(
-              "That looks like a receipt. Use Add expense to record a fuel purchase.",
-            );
-        }}
+        onBusy={setReadingStart}
       />
-      <label className="field">
-        <span>Starting odometer (miles) · photo-filled or manual</span>
-        <input
-          required
-          type="number"
-          min={mode === "live" ? vehicle.odometer : 0}
-          max="2000000"
-          step="0.1"
-          value={start}
-          onChange={(e) => setStart(e.target.value)}
-        />
-      </label>
-      {photoNote && <p className="form-note">{photoNote}</p>}
       {mode === "past" && (
         <>
-          <PhotoReading
+          <OdometerInput
+            label="Ending odometer"
+            value={end}
+            onChange={setEnd}
+            min={start}
             api={api}
             config={config}
-            kind="odometer"
-            onBusy={setEndReading}
-            label="Ending odometer photo"
-            onRead={(r) => {
-              if (r.odometer != null) setEnd(r.odometer);
-            }}
+            onBusy={setReadingEnd}
           />
-          <label className="field">
-            <span>Ending odometer (miles)</span>
-            <input
-              required
-              type="number"
-              min={start}
-              max="2000000"
-              step="0.1"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-            />
-          </label>
-          <div className="form-row">
-            <label className="field">
-              <span>Started (local time)</span>
-              <input name="started_at" type="datetime-local" required />
-            </label>
-            <label className="field">
-              <span>Finished (local time)</span>
-              <input name="ended_at" type="datetime-local" required />
-            </label>
-          </div>
-          <p className="form-note">
-            No phone on the drive? Record the actual readings and times here.
-            Current vehicle MPG and fuel price are used for this retrospective
-            estimate. Overlapping trips are rejected.
-          </p>
+          <details open>
+            <summary>Trip dates</summary>
+            <div className="form-row">
+              <label className="field">
+                <span>Started</span>
+                <input name="started_at" type="datetime-local" required />
+              </label>
+              <label className="field">
+                <span>Finished</span>
+                <input name="ended_at" type="datetime-local" required />
+              </label>
+            </div>
+          </details>
         </>
       )}
-      <label className="check-label">
-        <input name="sharing" type="checkbox" />
-        <span>
-          {mode === "live"
-            ? "Share live location and route with co-owners"
-            : "Share this past route with co-owners"}
-          <small>
-            Off by default. Your cost and distance are still visible.
-          </small>
-        </span>
-      </label>
-      <div className="info-note">
-        {estimate != null
-          ? `${(+end - +start).toFixed(1)} miles · ${money(estimate)} estimated fuel cost. `
-          : ""}
-        Using {vehicle.mpg} MPG and {money(vehicle.fuel_price)}/gallon. Costs
-        and balances update automatically when the trip is completed.
-      </div>
-      <button
-        className="btn"
-        disabled={busy || startReading || endReading}
-        type="submit"
-      >
-        <Navigation size={17} />
-        {mode === "live" ? "Confirm & start drive" : "Confirm & save past trip"}
+      <fieldset className="riders">
+        <legend>Who’s riding?</legend>
+        <div className="rider-options">
+          {owners.map((o) => (
+            <label
+              key={o.id}
+              className={selected.includes(o.id) ? "rider selected" : "rider"}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(o.id)}
+                disabled={o.id === userId}
+                onChange={(e) =>
+                  setSelected(
+                    e.target.checked
+                      ? [...selected, o.id]
+                      : selected.filter((id) => id !== o.id),
+                  )
+                }
+              />
+              {o.id === userId ? "You (driver)" : o.name}
+            </label>
+          ))}
+        </div>
+        <small>
+          Fuel cost split equally between {selected.length}{" "}
+          {selected.length === 1 ? "person" : "people"}.
+        </small>
+      </fieldset>
+      {!compact && (
+        <details onToggle={(e) => setRoute(e.currentTarget.open)}>
+          <summary>Map, destination & privacy</summary>
+          {route && (
+            <GoogleRouteSearch
+              origin={origin}
+              destination={destination}
+              setOrigin={setOrigin}
+              setDestination={setDestination}
+            />
+          )}
+          <label className="field">
+            <span>Purpose</span>
+            <select name="purpose" defaultValue={prefill.purpose || "Personal"}>
+              {["Commute", "Errands", "Personal", "Road trip"].map((x) => (
+                <option key={x}>{x}</option>
+              ))}
+            </select>
+          </label>
+          <label className="check-label">
+            <input name="sharing" type="checkbox" />
+            <span>Share route and live location with co-owners</span>
+          </label>
+        </details>
+      )}
+      <p className="form-note">
+        {vehicle.mpg} MPG · {money(vehicle.fuel_price)}/gal
+        {estimate !== null ? ` · ${money(estimate)} estimated fuel` : ""}
+      </p>
+      <button className="btn" disabled={busy || readingStart || readingEnd}>
+        {mode === "past" ? "Save trip" : "Start trip"}
       </button>
     </form>
   );
 }
 
-export function FinishTrip({ trip, prefill, api, config, busy, onFinish }) {
-  const [end, setEnd] = useState(prefill.end_odometer ?? "");
-  const [reading, setReading] = useState(false);
+export function FinishTrip({
+  trip,
+  prefill = {},
+  api,
+  config,
+  busy,
+  onFinish,
+}) {
+  const [end, setEnd] = useState(prefill.end_odometer ?? ""),
+    [reading, setReading] = useState(false);
   const distance = +end - trip.start_odometer;
+  const cost = Math.round((distance / trip.mpg) * trip.fuel_price * 100);
+  const riders = trip.participants || [
+    { user_id: trip.user_id, name: trip.driver },
+  ];
   return (
-    <section className="form finish-trip">
-      <PhotoReading
+    <form
+      className="form finish-trip"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onFinish({ end_odometer: +end });
+      }}
+    >
+      <OdometerInput
+        label="Ending odometer"
+        value={end}
+        onChange={setEnd}
+        min={trip.start_odometer}
         api={api}
         config={config}
-        kind="odometer"
         onBusy={setReading}
-        label="Finish with a dashboard photo"
-        onRead={(r) => {
-          if (r.odometer != null) setEnd(r.odometer);
-        }}
       />
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onFinish({ end_odometer: +end });
-        }}
-      >
-        <label className="field">
-          <span>Ending odometer (miles) · photo-filled or manual</span>
-          <input
-            required
-            type="number"
-            step="0.1"
-            min={trip.start_odometer}
-            max="2000000"
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
-          />
-        </label>
-        {end !== "" && distance >= 0 && (
-          <div className="info-note">
-            <div>
-              <strong>
-                {distance.toFixed(1)} miles ·{" "}
-                {money((distance / trip.mpg) * trip.fuel_price)} estimated fuel
-              </strong>
-              <p>
-                Your vehicle odometer, trip history, and owner balance will
-                update together.
-              </p>
-            </div>
-          </div>
-        )}
-        <button
-          className="btn"
-          disabled={busy || reading || end === ""}
-          type="submit"
-        >
-          <Check size={17} />
-          Confirm & finish drive
-        </button>
-      </form>
-    </section>
+      {end !== "" && distance >= 0 && (
+        <div className="cost-preview">
+          <strong>{money(cost / 100)}</strong>
+          <span>{distance.toFixed(1)} miles · estimated fuel</span>
+          {riders.map((p, i) => (
+            <small key={p.user_id}>
+              {p.name}:{" "}
+              {money(
+                (Math.floor(cost / riders.length) +
+                  (i < cost % riders.length ? 1 : 0)) /
+                  100,
+              )}
+            </small>
+          ))}
+        </div>
+      )}
+      <button className="btn" disabled={busy || reading || end === ""}>
+        End trip & save
+      </button>
+    </form>
   );
 }
 

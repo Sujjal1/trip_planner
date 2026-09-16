@@ -2633,3 +2633,231 @@ gmp-place-autocomplete {
   height: auto;
   align-self: flex-end;
 }
+
+/* Compact, task-focused shared vehicle interface. */
+body {
+  background: #f5f6f5;
+}
+.app-shell {
+  --radius: 10px;
+}
+.sidebar-tip,
+.workspace-label {
+  display: none;
+}
+.page-heading h1 {
+  font-size: 26px;
+  letter-spacing: -0.5px;
+}
+.page-heading {
+  margin-bottom: 18px;
+}
+.card {
+  box-shadow: none;
+  border-radius: 10px;
+}
+.simple-dashboard {
+  max-width: 850px;
+  margin: 0 auto;
+  display: grid;
+  gap: 18px;
+}
+.balance-strip {
+  display: flex;
+  gap: 40px;
+  padding: 8px 0;
+}
+.balance-strip > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.balance-strip span,
+.balance-strip small {
+  font-size: 13px;
+  color: #5e6a64;
+}
+.balance-strip strong {
+  font-size: 28px;
+  color: #183e31;
+}
+.trip-entry,
+.simple-history {
+  padding: 22px;
+}
+.trip-entry h2 {
+  margin-bottom: 18px;
+}
+.trip-form {
+  padding: 0;
+}
+.modal .trip-form {
+  padding: 22px;
+}
+.odometer-control {
+  display: flex;
+  align-items: center;
+  border: 1px solid #c6d0ca;
+  border-radius: 8px;
+  background: white;
+}
+.odometer-control input {
+  border: 0;
+  background: transparent;
+  font-size: 24px;
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+  padding: 14px;
+}
+.odometer-control .icon-btn {
+  margin: 0 10px;
+  flex-shrink: 0;
+}
+.odometer-control:focus-within {
+  outline: 2px solid #237c64;
+  outline-offset: 2px;
+}
+.odometer-field [hidden] {
+  display: none;
+}
+.riders {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.riders legend {
+  font-weight: 600;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.rider-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.rider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #d4ddd7;
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.rider.selected {
+  background: #edf6f0;
+  border-color: #237c64;
+}
+.rider input {
+  width: 16px;
+  height: 16px;
+  accent-color: #237c64;
+}
+.riders small {
+  color: #66736b;
+}
+.trip-form details {
+  border-top: 1px solid #e3e7e4;
+  padding-top: 12px;
+}
+.trip-form summary {
+  cursor: pointer;
+  font-size: 14px;
+  padding: 8px 0;
+}
+.dashboard-actions {
+  border-top: 1px solid #e5e9e6;
+  margin-top: 15px;
+  padding-top: 12px;
+}
+.cost-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #edf6f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+.cost-preview > strong {
+  font-size: 30px;
+}
+.trip-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #e7ebe8;
+  padding: 14px 0;
+}
+.trip-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.trip-summary > div:last-child {
+  text-align: right;
+  flex-shrink: 0;
+}
+.trip-summary small,
+.trip-shares {
+  display: block;
+  font-size: 12px;
+  color: #627067;
+  max-width: 420px;
+}
+.auth-page {
+  display: flex;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #f5f6f5;
+}
+.auth-form {
+  width: 100%;
+  max-width: 410px;
+  background: white;
+  border: 1px solid #e2e7e3;
+  border-radius: 12px;
+  padding: 30px;
+  margin: 0;
+}
+.auth-form h1 {
+  font-size: 25px;
+  margin-bottom: 20px;
+  color: #237c64;
+}
+.auth-form h2 {
+  font-size: 21px;
+}
+@media (max-width: 700px) {
+  .simple-dashboard {
+    gap: 12px;
+  }
+  .balance-strip {
+    gap: 24px;
+  }
+  .balance-strip strong {
+    font-size: 24px;
+  }
+  .trip-entry,
+  .simple-history {
+    padding: 16px;
+  }
+  .garage-owners {
+    display: none;
+  }
+  .page-heading h1 {
+    font-size: 23px;
+  }
+  .auth-page {
+    align-items: flex-start;
+    padding: 16px;
+  }
+  .auth-form {
+    margin-top: 24px;
+    padding: 24px;
+  }
+}

@@ -1,4 +1,4 @@
-import {PaymentForm, PaymentHistory, RemovedEntries} from "./Payments.jsx";
+import { PaymentForm, PaymentHistory, RemovedEntries } from "./Payments.jsx";
 import { GoogleEmbed } from "./GoogleRouteSearch.jsx";
 import {
   TripPlanner,
@@ -131,7 +131,7 @@ function App() {
     [vid, setVid] = useState(null),
     [config, setConfig] = useState({}),
     [boot, setBoot] = useState(true),
-    [page, setPage] = useState("Overview"),
+    [page, setPage] = useState("Dashboard"),
     [modal, setModal] = useState(null),
     [toast, setToast] = useState(""),
     [error, setError] = useState(""),
@@ -295,7 +295,7 @@ function App() {
     myOwner = owners.find((o) => o.id === me.user.id),
     nowDate = new Date();
   const navItems = [
-    [LayoutDashboard, "Overview"],
+    [LayoutDashboard, "Dashboard"],
     [Route, "Trips"],
     [Wallet, "Expenses"],
     [Users, "Co-owners"],
@@ -309,9 +309,14 @@ function App() {
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
-  const canRemove = row => row.user_id === me.user.id || v.created_by === me.user.id;
-  const askRemove = (kind,id) => open('remove',{kind,id});
-  const restoreRecord = (kind,id) => run(()=>api(`/records/${kind}/${id}`,'PATCH',{deleted:false}),'Entry restored. Balances updated.');
+  const canRemove = (row) =>
+    row.user_id === me.user.id || v.created_by === me.user.id;
+  const askRemove = (kind, id) => open("remove", { kind, id });
+  const restoreRecord = (kind, id) =>
+    run(
+      () => api(`/records/${kind}/${id}`, "PATCH", { deleted: false }),
+      "Entry restored. Balances updated.",
+    );
   const tripTable = (rows) => (
     <div className="table-scroll">
       <table>
@@ -327,7 +332,8 @@ function App() {
               </span>
             </th>
             <th>DATE</th>
-            <th>TYPE</th><th>ACTIONS</th>
+            <th>TYPE</th>
+            <th>ACTIONS</th>
           </tr>
         </thead>
         <tbody>
@@ -363,6 +369,11 @@ function App() {
               </td>
               <td>
                 <strong>{t.ended_at ? money(t.cost_cents) : "—"}</strong>
+                <small className="trip-shares">
+                  {t.participants
+                    .map((p) => `${p.name}: ${money(p.cost_cents)}`)
+                    .join(" · ")}
+                </small>
               </td>
               <td>{date(t.started_at)}</td>
               <td>
@@ -373,7 +384,16 @@ function App() {
                 </span>
                 {!t.sharing && <EyeOff size={13} className="private-icon" />}
               </td>
-              <td>{t.ended_at && canRemove(t) && <button className="text-btn" onClick={()=>askRemove("trips",t.id)}>Delete trip</button>}</td>
+              <td>
+                {t.ended_at && canRemove(t) && (
+                  <button
+                    className="text-btn"
+                    onClick={() => askRemove("trips", t.id)}
+                  >
+                    Delete trip
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -381,7 +401,7 @@ function App() {
       {!rows.length && (
         <Empty
           icon={Route}
-          title="Your next journey starts here"
+          title="No trips yet"
           text="Start a drive to keep your distance and costs in one place."
         />
       )}
@@ -395,7 +415,7 @@ function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            nav("Overview");
+            nav("Dashboard");
           }}
         >
           <span className="brand-mark">
@@ -417,23 +437,6 @@ function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-tip">
-          <div className="tip-icon">
-            <Leaf size={20} />
-          </div>
-          <strong>
-            A little sharing.
-            <br />A lot of possibility.
-          </strong>
-          <p>
-            One car. More adventures.
-            <br />
-            Fair for everyone.
-          </p>
-          <div className="tip-road">
-            <Car size={29} />
-          </div>
-        </div>
         <div className="sidebar-bottom">
           <button
             className={page === "Settings" ? "nav-item selected" : "nav-item"}
@@ -528,18 +531,13 @@ function App() {
             <>
               <div className="page-heading">
                 <div>
-                  <div className="eyebrow">A BETTER WAY TO SHARE</div>
-                  <h1>Your shared garage starts here.</h1>
-                  <p>
-                    Add your vehicle, invite your people, and make every mile
-                    fair.
-                  </p>
+                  <h1>Your vehicles</h1>
                 </div>
               </div>
               <div className="onboarding-grid">
                 <div className="card onboarding">
                   <Car size={40} />
-                  <h2>Bring your car</h2>
+                  <h2>Add a vehicle</h2>
                   <p>
                     Set up a shared vehicle with its current odometer, fuel
                     economy, and pump price.
@@ -551,7 +549,7 @@ function App() {
                 </div>
                 <div className="card onboarding">
                   <Users size={40} />
-                  <h2>Join your people</h2>
+                  <h2>Join a vehicle</h2>
                   <p>
                     Already sharing a car? Use the invitation code from your
                     garage creator.
@@ -567,43 +565,10 @@ function App() {
             <>
               <div className="page-heading">
                 <div>
-                  <div className="eyebrow">
-                    {page === "Overview"
-                      ? "YOUR GARAGE, AT A GLANCE"
-                      : "EVERY MILE, TOGETHER"}
-                  </div>
-                  <h1>
-                    {page === "Overview"
-                      ? `Hey ${me.user.name.split(" ")[0]}, ready to roll?`
-                      : page === "Trips"
-                        ? "Every journey has a story."
-                        : page === "Expenses"
-                          ? "Shared fairly. Clearly."
-                          : page === "Co-owners"
-                            ? "Your car. Your circle."
-                            : page === "Schedule"
-                              ? "Make room for the everyday."
-                              : "Make CoDrive yours."}
-                    <span className="heading-dot">
-                      {page === "Overview" ? "✳" : ""}
-                    </span>
-                  </h1>
-                  <p>
-                    {page === "Overview"
-                      ? "A little less admin. A little more open road. Here’s how your car is doing."
-                      : page === "Trips"
-                        ? "Your shared trip log, from the daily commute to the scenic route."
-                        : page === "Expenses"
-                          ? "See who used what, who paid, and how it all adds up."
-                          : page === "Co-owners"
-                            ? "Everyone in the loop. Every contribution accounted for."
-                            : page === "Schedule"
-                              ? "Plan recurring drives and keep your shared calendar in sync."
-                              : "Your vehicle preferences and connected services, in one place."}
-                  </p>
+                  <h1>{page === "Dashboard" ? "Dashboard" : page}</h1>
                 </div>
                 <div className="heading-actions">
-                  {page === "Overview" || page === "Trips" ? (
+                  {page === "Trips" ? (
                     <Button onClick={() => open("trip")}>
                       <Plus size={18} />
                       {active ? "Record a past trip" : "Start a trip"}
@@ -678,7 +643,7 @@ function App() {
                   <ChevronRight size={15} />
                 </button>
               </div>
-              {active && (
+              {active && page !== "Dashboard" && (
                 <div className="live-banner">
                   <span className="live-pulse" />
                   <div>
@@ -699,207 +664,131 @@ function App() {
                   </Button>
                 </div>
               )}
-              {page === "Overview" && (
-                <>
-                  <div className="stats-grid">
-                    <Stat
-                      label="Total distance"
-                      value={number(totalMiles)}
-                      unit="mi"
-                      icon={Route}
-                      note={`${done.length} completed trips together`}
-                      color="mint"
-                    />
-                    <Stat
-                      label="Estimated fuel cost"
-                      value={money(totalFuel)}
-                      icon={Fuel}
-                      note={`${v.mpg} MPG · ${money(v.fuel_price * 100)} / gal`}
-                      color="peach"
-                    />
-                    <Stat
-                      label="Your net balance"
-                      value={money(myOwner?.balance_cents || 0)}
-                      icon={Wallet}
-                      note={
-                        (myOwner?.balance_cents || 0) < 0
-                          ? "Credit carried forward"
-                          : "After purchases and owner payments"
-                      }
-                      color="lavender"
-                    />
-                    <Stat
-                      label="Time on the road"
-                      value={number(
-                        done.reduce(
-                          (s, t) =>
-                            s +
-                            (new Date(t.ended_at) - new Date(t.started_at)) /
-                              3600000,
-                          0,
-                        ),
-                      )}
-                      unit="hrs"
-                      icon={Clock}
-                      note="From recorded start and end times"
-                      color="blue"
-                    />
-                  </div>
-                  <div className="overview-grid">
-                    <section className="card activity-card">
-                      <div className="card-heading">
-                        <div>
-                          <h2>Your days in motion</h2>
-                          <p>Distance covered by your whole crew</p>
-                        </div>
-                        <span className="subtle-tag">
-                          Last 14 days
-                          <ChevronDown size={13} />
-                        </span>
-                      </div>
-                      <ActivityChart trips={done} />
-                      <div className="chart-foot">
-                        <span>
-                          <i />
-                          Shared miles
-                        </span>
-                        <span>Every journey adds up.</span>
-                      </div>
-                    </section>
-                    <section className="card split-card">
-                      <div className="card-heading">
-                        <div>
-                          <h2>Who’s behind the wheel?</h2>
-                          <p>Your all-time mileage split</p>
-                        </div>
-                        <Users size={19} />
-                      </div>
-                      <Donut owners={owners} total={totalMiles} />
-                      <div className="owner-legend">
-                        {owners.map((o, i) => (
-                          <div key={o.id}>
-                            <span>
-                              <i
-                                style={{
-                                  background: [
-                                    "#237c64",
-                                    "#a8cabb",
-                                    "#eed29e",
-                                    "#99b8d1",
-                                  ][i % 4],
-                                }}
-                              />
-                              {o.id === me.user.id
-                                ? "You"
-                                : o.name.split(" ")[0]}
-                            </span>
-                            <strong>
-                              {number(o.miles)} <small>mi</small>
-                            </strong>
-                            <span>
-                              {totalMiles
-                                ? Math.round((o.miles / totalMiles) * 100)
-                                : 0}
-                              %
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                    <section className="scan-card">
-                      <div className="ai-label">
-                        <Sparkles size={15} />
-                        LESS TYPING. MORE DRIVING.
-                      </div>
-                      <div className="scan-art">
-                        <div className="scan-corner a" />
-                        <div className="scan-corner b" />
-                        <div className="scan-corner c" />
-                        <div className="scan-corner d" />
-                        <Gauge size={64} strokeWidth={1} />
-                        <span>0 2 8 4 6 0</span>
-                      </div>
-                      <h2>
-                        Snap it.
-                        <br />
-                        We’ll read it.
-                      </h2>
-                      <p>
-                        A dashboard or fuel receipt photo. Gemini helps with the
-                        numbers; you stay in control.
-                      </p>
-                      <Button variant="light" onClick={() => open("scan")}>
-                        <Camera size={17} />
-                        Scan a photo
-                        <ArrowUpRight size={17} />
-                      </Button>
+              {page === "Dashboard" && (
+                <div className="simple-dashboard">
+                  <div className="balance-strip">
+                    <div>
+                      <span>Your balance</span>
+                      <strong>{money(myOwner?.balance_cents || 0)}</strong>
                       <small>
-                        <ShieldCheck size={13} />
-                        You confirm every reading
+                        {(myOwner?.balance_cents || 0) < 0
+                          ? "Credit"
+                          : "Estimated costs less payments"}
                       </small>
-                    </section>
+                    </div>
+                    <div>
+                      <span>Your fuel share</span>
+                      <strong>{money(myOwner?.fuel_cents || 0)}</strong>
+                    </div>
                   </div>
-                  <section className="card recent-card">
-                    <div className="card-heading">
-                      <div>
-                        <h2>
-                          Recent journeys{" "}
-                          <span className="count">{trips.length}</span>
-                        </h2>
+                  <section className="card trip-entry">
+                    <h2>
+                      {active
+                        ? mine
+                          ? "End trip"
+                          : `${active.driver} is driving`
+                        : "Start trip"}
+                    </h2>
+                    {!active ? (
+                      <TripPlanner
+                        key={v.id}
+                        compact
+                        owners={owners}
+                        userId={me.user.id}
+                        vehicle={v}
+                        api={api}
+                        config={config}
+                        busy={busy}
+                        onSubmit={(b) =>
+                          run(
+                            () => api(`/vehicles/${vid}/trips`, "POST", b),
+                            "Trip started.",
+                          )
+                        }
+                        onManual={(b) =>
+                          run(
+                            () =>
+                              api(`/vehicles/${vid}/trips/manual`, "POST", b),
+                            "Trip saved.",
+                          )
+                        }
+                      />
+                    ) : mine ? (
+                      <>
                         <p>
-                          Little trips, big adventures, and everything in
-                          between.
+                          Starting odometer:{" "}
+                          <strong>{number(active.start_odometer)} mi</strong>
                         </p>
-                      </div>
-                      <button className="text-btn" onClick={() => nav("Trips")}>
-                        View all trips
-                        <ArrowRight size={16} />
+                        <p>
+                          Split between{" "}
+                          {active.participants.map((p) => p.name).join(", ")}
+                        </p>
+                        <FinishTrip
+                          key={active.id}
+                          trip={active}
+                          prefill={{}}
+                          api={api}
+                          config={config}
+                          busy={busy}
+                          onFinish={(b) =>
+                            run(
+                              () =>
+                                api(`/trips/${active.id}/finish`, "POST", b),
+                              "Trip finished. Costs updated.",
+                            )
+                          }
+                        />
+                      </>
+                    ) : (
+                      <p>
+                        Starting odometer: {number(active.start_odometer)} mi
+                      </p>
+                    )}
+                    <div className="dashboard-actions">
+                      <button
+                        className="text-btn"
+                        onClick={() => open(active ? "drive" : "trip")}
+                      >
+                        {active ? "Map & trip options" : "Map & past trips"}
                       </button>
                     </div>
-                    {tripTable(trips.slice(0, 5))}
                   </section>
-                  <PurposeSummary trips={done} />
-                  <div className="bottom-grid">
-                    <section className="card quick-card">
-                      <div className="round-icon">
-                        <CalendarDays />
-                      </div>
-                      <div>
-                        <h3>Same route. Less routine.</h3>
-                        <p>
-                          Save your everyday drives and start them in a tap.
-                        </p>
-                      </div>
-                      <button
-                        className="icon-btn"
-                        aria-label="View schedule"
-                        onClick={() => nav("Schedule")}
-                      >
-                        <ArrowUpRight />
+                  <section className="card simple-history">
+                    <div className="card-heading">
+                      <h2>Recent trips</h2>
+                      <button className="text-btn" onClick={() => nav("Trips")}>
+                        View all
                       </button>
-                    </section>
-                    <section className="card quick-card">
-                      <div className="round-icon peach">
-                        <Fuel />
+                    </div>
+                    {done.slice(0, 4).map((t) => (
+                      <div className="trip-summary" key={t.id}>
+                        <div>
+                          <strong>
+                            {t.destination === "Trip"
+                              ? t.driver
+                              : t.destination}
+                          </strong>
+                          <small>
+                            {number(t.start_odometer)} →{" "}
+                            {number(t.end_odometer)} mi · {date(t.started_at)}
+                          </small>
+                          <small>
+                            {t.participants
+                              .map((p) => `${p.name}: ${money(p.cost_cents)}`)
+                              .join(" · ")}
+                          </small>
+                        </div>
+                        <div>
+                          <strong>{money(t.cost_cents)}</strong>
+                          <small>
+                            {number(t.end_odometer - t.start_odometer)} mi
+                          </small>
+                        </div>
                       </div>
-                      <div>
-                        <h3>
-                          {money(v.fuel_price * 100)} <span>/ gallon</span>
-                        </h3>
-                        <p>
-                          {v.price_source} · updated {date(v.price_date)}
-                        </p>
-                      </div>
-                      <button
-                        className="icon-btn"
-                        aria-label="Update fuel price"
-                        onClick={() => nav("Settings")}
-                      >
-                        <ArrowUpRight />
-                      </button>
-                    </section>
-                  </div>
-                </>
+                    ))}
+                    {!done.length && <p>No completed trips.</p>}
+                  </section>
+                </div>
               )}
               {page === "Trips" && (
                 <section className="card">
@@ -934,7 +823,12 @@ function App() {
               )}
               {page === "Expenses" && (
                 <>
-                  <PaymentHistory payments={data.payments || []} canRemove={canRemove} onRemove={askRemove} onAdd={()=>open("payment")}/>
+                  <PaymentHistory
+                    payments={data.payments || []}
+                    canRemove={canRemove}
+                    onRemove={askRemove}
+                    onAdd={() => open("payment")}
+                  />
                   <div className="stats-grid three">
                     <Stat
                       label="Estimated fuel used"
@@ -966,8 +860,10 @@ function App() {
                       <strong>Simple, transparent math.</strong> Fuel use =
                       miles ÷ MPG × saved price. Other expenses are split
                       equally among owners at the time of entry. Fuel purchases
-                      give the payer credit. Direct payments reduce the sender’s balance and increase the recipient’s. Balances are estimates, not payment
-                      requests; unused fuel credit carries forward.
+                      give the payer credit. Direct payments reduce the sender’s
+                      balance and increase the recipient’s. Balances are
+                      estimates, not payment requests; unused fuel credit
+                      carries forward.
                     </p>
                   </div>
                   <section className="card">
@@ -983,7 +879,9 @@ function App() {
                             <th>FUEL USED (EST.)</th>
                             <th>SHARED EXPENSES</th>
                             <th>PURCHASES PAID</th>
-                            <th>PAYMENTS SENT</th><th>RECEIVED</th><th>NET BALANCE</th>
+                            <th>PAYMENTS SENT</th>
+                            <th>RECEIVED</th>
+                            <th>NET BALANCE</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -997,7 +895,9 @@ function App() {
                               </td>
                               <td>{money(o.fuel_cents)}</td>
                               <td>{money(o.shared_cents)}</td>
-                              <td>{money(o.paid_cents)}</td><td>{money(o.sent_cents || 0)}</td><td>{money(o.received_cents || 0)}</td>
+                              <td>{money(o.paid_cents)}</td>
+                              <td>{money(o.sent_cents || 0)}</td>
+                              <td>{money(o.received_cents || 0)}</td>
                               <td>
                                 <strong>{money(o.balance_cents)}</strong>
                               </td>
@@ -1027,7 +927,8 @@ function App() {
                               <th>PAID BY</th>
                               <th>CATEGORY</th>
                               <th>AMOUNT</th>
-                              <th>DATE</th><th>ACTIONS</th>
+                              <th>DATE</th>
+                              <th>ACTIONS</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1041,7 +942,19 @@ function App() {
                                   <span className="pill">{e.category}</span>
                                 </td>
                                 <td>{money(e.amount_cents)}</td>
-                                <td>{date(e.created_at)}</td><td>{canRemove(e)&&<button className="text-btn" onClick={()=>askRemove("expenses",e.id)}>Delete expense</button>}</td>
+                                <td>{date(e.created_at)}</td>
+                                <td>
+                                  {canRemove(e) && (
+                                    <button
+                                      className="text-btn"
+                                      onClick={() =>
+                                        askRemove("expenses", e.id)
+                                      }
+                                    >
+                                      Delete expense
+                                    </button>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -1057,7 +970,13 @@ function App() {
                   </section>
                 </>
               )}
-              {["Trips","Expenses"].includes(page) && <RemovedEntries entries={data.removed || []} busy={busy} onRestore={restoreRecord}/>}
+              {["Trips", "Expenses"].includes(page) && (
+                <RemovedEntries
+                  entries={data.removed || []}
+                  busy={busy}
+                  onRestore={restoreRecord}
+                />
+              )}
               {page === "Co-owners" && (
                 <div className="owners-grid">
                   {owners.map((o, i) => (
@@ -1201,16 +1120,6 @@ function App() {
                   open={open}
                 />
               )}
-              <footer>
-                <span>
-                  <span className="footer-logo">CoDrive.</span> Shared journeys.
-                  Fair costs.
-                </span>
-                <span>
-                  <ShieldCheck size={13} />
-                  Your garage, your circle.
-                </span>
-              </footer>
             </>
           )}
         </main>
@@ -1233,14 +1142,14 @@ function App() {
             {
               payment: "Record a payment to another owner",
               remove: "Delete this entry?",
-              trip: "Plan your journey",
+              trip: "Trip options",
               details: "Vehicle details",
               expense: "Record a shared expense",
               vehicle: "Add your vehicle",
               join: "Join a shared garage",
               routine: "Build your everyday route",
               scan: "A photo. A little AI. Your confirmation.",
-              drive: mine ? "Your drive, your way" : "A journey in progress",
+              drive: mine ? "Current trip" : "Current trip",
               invite: "Good things are better shared",
               notifications: "Your garage activity",
             }[modal]
@@ -1259,8 +1168,52 @@ function App() {
               {error}
             </div>
           )}
-          {modal === "payment" && <PaymentForm owners={owners} userId={me.user.id} busy={busy} onSubmit={body=>run(()=>api(`/vehicles/${vid}/payments`,'POST',body),'Payment recorded. Both owner balances updated.')}/>}
-          {modal === "remove" && <div className="modal-body form"><p>This removes the entry from totals and recalculates everyone’s balance. You can restore it from Deleted entries.</p>{prefill.kind==='trips'&&<p>The vehicle’s current odometer will not change. If the reading was wrong too, correct it in Vehicle details after removing the trip.</p>}<button className="btn" disabled={busy} onClick={()=>run(()=>api(`/records/${prefill.kind}/${prefill.id}`,'PATCH',{deleted:true}),'Entry deleted. You can restore it from Deleted entries.')}>Delete entry</button><button className="btn secondary" onClick={()=>setModal(null)}>Keep entry</button></div>}
+          {modal === "payment" && (
+            <PaymentForm
+              owners={owners}
+              userId={me.user.id}
+              busy={busy}
+              onSubmit={(body) =>
+                run(
+                  () => api(`/vehicles/${vid}/payments`, "POST", body),
+                  "Payment recorded. Both owner balances updated.",
+                )
+              }
+            />
+          )}
+          {modal === "remove" && (
+            <div className="modal-body form">
+              <p>
+                This removes the entry from totals and recalculates everyone’s
+                balance. You can restore it from Deleted entries.
+              </p>
+              {prefill.kind === "trips" && (
+                <p>
+                  The vehicle’s current odometer will not change. If the reading
+                  was wrong too, correct it in Vehicle details after removing
+                  the trip.
+                </p>
+              )}
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() =>
+                  run(
+                    () =>
+                      api(`/records/${prefill.kind}/${prefill.id}`, "PATCH", {
+                        deleted: true,
+                      }),
+                    "Entry deleted. You can restore it from Deleted entries.",
+                  )
+                }
+              >
+                Delete entry
+              </button>
+              <button className="btn secondary" onClick={() => setModal(null)}>
+                Keep entry
+              </button>
+            </div>
+          )}
           {modal === "vehicle" && (
             <DataForm
               busy={busy}
@@ -1342,6 +1295,8 @@ function App() {
           )}
           {modal === "trip" && (
             <TripPlanner
+              owners={owners}
+              userId={me.user.id}
               api={api}
               config={config}
               hasActive={!!active}
@@ -1526,55 +1481,9 @@ function Auth({ config, error, busy, onSubmit, onDemo }) {
   const [register, setRegister] = useState(false);
   return (
     <div className="auth-page">
-      <div className="auth-story">
-        <div className="brand">
-          <span className="brand-mark">
-            <Car />
-          </span>
-          CoDrive.
-        </div>
-        <div>
-          <span className="eyebrow">ONE CAR. A WORLD OF POSSIBILITIES.</span>
-          <h1>
-            Share the ride.
-            <br />
-            Not the
-            <br />
-            <em>headache.</em>
-          </h1>
-          <p>
-            From everyday errands to weekend escapes.
-            <br />
-            Keep your trips, your people, and your costs in sync.
-          </p>
-          <div className="auth-tags">
-            <span>
-              <ShieldCheck size={17} />
-              Your privacy, your call
-            </span>
-            <span>
-              <Wallet size={17} />
-              Fair down to the mile
-            </span>
-          </div>
-        </div>
-        <span className="auth-bottom">SHARED JOURNEYS. FAIR COSTS.</span>
-      </div>
       <div className="auth-form">
-        <span className="subtle-tag">
-          <Car size={15} />
-          Your shared garage awaits
-        </span>
-        <h2>
-          {register
-            ? "Make yourself at home."
-            : "Welcome to your next chapter."}
-        </h2>
-        <p>
-          {register
-            ? "Create your account and bring your crew along."
-            : "Sign in to keep everyone moving together."}
-        </p>
+        <h1>CoDrive</h1>
+        <h2>{register ? "Create account" : "Sign in"}</h2>
         {error && (
           <div className="error" role="alert">
             {error}
@@ -1892,11 +1801,7 @@ function MapView({ trip, mine }) {
       <span className="round-icon">
         {trip.sharing ? <MapPin /> : <EyeOff />}
       </span>
-      <h3>
-        {trip.sharing
-          ? "Your journey, connected"
-          : "A little space for yourself."}
-      </h3>
+      <h3>{trip.sharing ? "Trip map" : "A little space for yourself."}</h3>
       <p>
         {trip.sharing
           ? "Add a Google Maps key to display the route in-app. GPS sharing works independently."
@@ -1924,13 +1829,7 @@ function DrivePanel({
           <strong>
             {trip.origin} → {trip.destination}
           </strong>
-          <small>
-            {trip.driver} · Started{" "}
-            {new Date(trip.started_at).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </small>
+          <small>{trip.driver}</small>
         </div>
       </div>
       <MapView trip={trip} mine={mine} />

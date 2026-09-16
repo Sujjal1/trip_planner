@@ -16,7 +16,7 @@ def clean(tmp_path, monkeypatch):
     monkeypatch.setattr(main,'DB',str(tmp_path/'garage.sqlite3'))
     if main.DATABASE_URL:
         with main.db() as c:
-            c.execute('TRUNCATE users, sessions, vehicles, members, trips, expenses, expense_shares, routines, payments, notifications, api_usage RESTART IDENTITY CASCADE')
+            c.execute('TRUNCATE users, sessions, vehicles, members, trips, trip_participants, expenses, expense_shares, routines, payments, notifications, api_usage RESTART IDENTITY CASCADE')
     main.attempts.clear()
     main.init_db()
 
@@ -346,3 +346,54 @@ def test_places_budget_blocks_provider_and_survives_restart(monkeypatch):
     blocked=c.post('/api/maps/search',json=body)
     assert blocked.status_code==503 and 'usage allowance' in blocked.json()['detail']
     assert len(calls)==1
+
+
+def test_trip_participants_split_exact_cents_and_restore():
+    a=client(); vid=vehicle(a); b=client('Bea'); d=client('Dee')
+    join(b,a,vid); join(d,a,vid)
+    owners=a.get(f'/api/vehicles/{vid}').json()['owners']; ids=[o['id'] for o in owners]
+    tid=start(a,vid,participant_ids=ids).json()['id']
+    assert a.post(f'/api/trips/{tid}/finish',json={'end_odometer':10001}).status_code==200
+    data=a.get(f'/api/vehicles/{vid}').json()
+    assert sum(o['fuel_cents'] for o in data['owners'])==12
+    assert [p['cost_cents'] for p in data['trips'][0]['participants']]==[4,4,4]
+    tid2=start(a,vid,start_odometer=10001,participant_ids=ids[:2]).json()['id']
+    a.post(f'/api/trips/{tid2}/finish',json={'end_odometer':10001.1})
+    data=a.get(f'/api/vehicles/{vid}').json()
+    assert [p['cost_cents'] for p in data['trips'][0]['participants']]==[1,0]
+    assert sum(o['fuel_cents'] for o in data['owners'])==13
+    assert a.patch(f'/api/records/trips/{tid}',json={'deleted':True}).status_code==200
+    assert sum(o['fuel_cents'] for o in a.get(f'/api/vehicles/{vid}').json()['owners'])==1
+    a.patch(f'/api/records/trips/{tid}',json={'deleted':False})
+    assert sum(o['fuel_cents'] for o in a.get(f'/api/vehicles/{vid}').json()['owners'])==13
+
+
+def test_participants_validate_members_and_preserve_driver_default():
+    a=client(); vid=vehicle(a); b=client('Outside')
+    uid=a.get('/api/me').json()['user']['id']; other=b.get('/api/me').json()['user']['id']
+    for ids in ([],[other],[uid,other]):
+        assert start(a,vid,participant_ids=ids).status_code==400
+        assert not a.get(f'/api/vehicles/{vid}').json()['trips']
+    tid=start(a,vid).json()['id']
+    a.post(f'/api/trips/{tid}/finish',json={'end_odometer':10030})
+    with main.db() as c:
+        c.execute('DELETE FROM trip_participants WHERE trip_id=?',(tid,))
+    data=a.get(f'/api/vehicles/{vid}').json()
+    assert data['owners'][0]['fuel_cents']==360
+    assert data['trips'][0]['participants'][0]['user_id']==uid
+
+
+def test_past_trip_splits_selected_owners_only():
+    from datetime import datetime,timedelta,timezone
+    a=client();vid=vehicle(a); b=client('Bea');join(b,a,vid)
+    ids=[o['id'] for o in a.get(f'/api/vehicles/{vid}').json()['owners']]
+    end=datetime.now(timezone.utc)-timedelta(days=1)
+    r=a.post(f'/api/vehicles/{vid}/trips/manual',json={
+        'origin':'Home','destination':'Office','purpose':'Personal',
+        'start_odometer':9970,'end_odometer':10000,'participant_ids':ids,
+        'started_at':(end-timedelta(hours=1)).isoformat(),'ended_at':end.isoformat()})
+    assert r.status_code==200,r.text
+    data=b.get(f'/api/vehicles/{vid}').json()
+    assert [o['fuel_cents'] for o in data['owners']]==[180,180]
+    assert data['trips'][0]['origin']=='Private location'
+    assert len(data['trips'][0]['participants'])==2

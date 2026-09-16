@@ -58,6 +58,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS members(vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),PRIMARY KEY(vehicle_id,user_id));
         CREATE TABLE IF NOT EXISTS trips(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),origin TEXT,destination TEXT,purpose TEXT,start_odometer REAL,end_odometer REAL,mpg REAL,fuel_price REAL,cost_cents INTEGER DEFAULT 0,started_at TEXT,ended_at TEXT,sharing INTEGER DEFAULT 0,latitude REAL,longitude REAL,location_at TEXT);
         CREATE UNIQUE INDEX IF NOT EXISTS one_active_trip ON trips(vehicle_id) WHERE ended_at IS NULL;
+        CREATE TABLE IF NOT EXISTS trip_participants(trip_id INTEGER REFERENCES trips(id),user_id INTEGER REFERENCES users(id),PRIMARY KEY(trip_id,user_id));
         CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),description TEXT,category TEXT,amount_cents INTEGER,created_at TEXT);
         CREATE TABLE IF NOT EXISTS expense_shares(expense_id INTEGER REFERENCES expenses(id),user_id INTEGER REFERENCES users(id),amount_cents INTEGER,PRIMARY KEY(expense_id,user_id));
         CREATE TABLE IF NOT EXISTS routines(id INTEGER PRIMARY KEY,vehicle_id INTEGER REFERENCES vehicles(id),user_id INTEGER REFERENCES users(id),origin TEXT,destination TEXT,days TEXT,time TEXT,miles REAL,purpose TEXT);
@@ -224,6 +225,9 @@ def dashboard(vid:int,u=Depends(current_user)):
         owners=[dict(x) for x in c.execute('SELECT u.id,u.name FROM users u JOIN members m ON u.id=m.user_id WHERE m.vehicle_id=?',(vid,))]
         trips=[dict(x) for x in c.execute('SELECT t.*,u.name driver FROM trips t JOIN users u ON t.user_id=u.id WHERE vehicle_id=? AND deleted_at IS NULL ORDER BY id DESC',(vid,))]
         for t in trips:
+            ids=[r[0] for r in c.execute('SELECT user_id FROM trip_participants WHERE trip_id=? ORDER BY user_id',(t['id'],))] or [t['user_id']]
+            q,remainder=divmod(t['cost_cents'],len(ids))
+            t['participants']=[{'user_id':uid,'name':next(o['name'] for o in owners if o['id']==uid),'cost_cents':q+(i<remainder)} for i,uid in enumerate(ids)]
             # Ignore fields left in existing databases by the retired mobile prototype.
             for key in ('destination_latitude','destination_longitude','gps_miles','distance_source'):
                 t.pop(key,None)
@@ -241,7 +245,7 @@ def dashboard(vid:int,u=Depends(current_user)):
             owned=[t for t in trips if t['user_id']==o['id']]
             o['miles']=round(sum((t['end_odometer']-t['start_odometer']) for t in owned if t['ended_at']),1)
             o['trip_count']=len(owned)
-            o['fuel_cents']=sum(t['cost_cents'] for t in owned)
+            o['fuel_cents']=sum(p['cost_cents'] for t in trips for p in t['participants'] if p['user_id']==o['id'])
             o['paid_cents']=sum(e['amount_cents'] for e in expenses if e['user_id']==o['id'])
             o['shared_cents']=c.execute('SELECT COALESCE(SUM(s.amount_cents),0) FROM expense_shares s JOIN expenses e ON e.id=s.expense_id WHERE e.vehicle_id=? AND s.user_id=? AND e.deleted_at IS NULL',(vid,o['id'])).fetchone()[0]
             o['sent_cents']=sum(p['amount_cents'] for p in payments if p['user_id']==o['id'])
@@ -257,6 +261,16 @@ class TripStart(Model):
     purpose: str = Field(pattern='^(Commute|Errands|Personal|Road trip)$')
     start_odometer: float = Field(ge=0,le=2_000_000)
     sharing: bool = False
+    participant_ids: list[int] | None = Field(default=None,max_length=100)
+
+def save_participants(c,vid,tid,driver,requested):
+    ids=sorted(set(requested if requested is not None else [driver]))
+    if driver not in ids:
+        raise HTTPException(400,'The driver must be included in the trip.')
+    members={r[0] for r in c.execute('SELECT user_id FROM members WHERE vehicle_id=?',(vid,))}
+    if not set(ids)<=members:
+        raise HTTPException(400,'Choose participants from this vehicle’s owners.')
+    c.executemany('INSERT INTO trip_participants VALUES(?,?)',[(tid,uid) for uid in ids])
 
 @app.post('/api/vehicles/{vid}/trips')
 def start(vid:int,data:TripStart,u=Depends(current_user)):
@@ -267,6 +281,7 @@ def start(vid:int,data:TripStart,u=Depends(current_user)):
         try:
             tid=c.execute('INSERT INTO trips(vehicle_id,user_id,origin,destination,purpose,start_odometer,mpg,fuel_price,started_at,sharing) VALUES(?,?,?,?,?,?,?,?,?,?)',(vid,u['id'],data.origin,data.destination,data.purpose,data.start_odometer,v['mpg'],v['fuel_price'],now(),data.sharing)).lastrowid
         except IntegrityError: raise HTTPException(409,'This vehicle already has a trip in progress.')
+        save_participants(c,vid,tid,u['id'],data.participant_ids)
         notify(c,vid,f"{u['name']} started a drive. " + ('Location sharing is on.' if data.sharing else 'Location is private.'))
     return {'id':tid}
 
@@ -549,6 +564,7 @@ def past_trip(vid:int,data:PastTrip,u=Depends(current_user)):
                 raise HTTPException(400,'End reading exceeds a later trip’s start reading.')
         cost=fuel_cost(Decimal(str(data.end_odometer))-Decimal(str(data.start_odometer)),v['mpg'],v['fuel_price'])
         tid=c.execute('INSERT INTO trips(vehicle_id,user_id,origin,destination,purpose,start_odometer,end_odometer,mpg,fuel_price,cost_cents,started_at,ended_at,sharing) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(vid,u['id'],data.origin,data.destination,data.purpose,data.start_odometer,data.end_odometer,v['mpg'],v['fuel_price'],cost,start_at.isoformat(),end_at.isoformat(),data.sharing)).lastrowid
+        save_participants(c,vid,tid,u['id'],data.participant_ids)
         c.execute('UPDATE vehicles SET odometer=MAX(odometer,?) WHERE id=?',(data.end_odometer,vid))
         notify(c,vid,f"{u['name']} added a past trip. Estimated fuel cost: ${cost/100:.2f}.")
     return {'id':tid,'cost_cents':cost}
