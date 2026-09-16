@@ -265,8 +265,8 @@ class TripStart(Model):
 
 def save_participants(c,vid,tid,driver,requested):
     ids=sorted(set(requested if requested is not None else [driver]))
-    if driver not in ids:
-        raise HTTPException(400,'The driver must be included in the trip.')
+    if not ids:
+        raise HTTPException(400,'Select at least one rider.')
     members={r[0] for r in c.execute('SELECT user_id FROM members WHERE vehicle_id=?',(vid,))}
     if not set(ids)<=members:
         raise HTTPException(400,'Choose participants from this vehicle’s owners.')
@@ -282,7 +282,9 @@ def start(vid:int,data:TripStart,u=Depends(current_user)):
             tid=c.execute('INSERT INTO trips(vehicle_id,user_id,origin,destination,purpose,start_odometer,mpg,fuel_price,started_at,sharing) VALUES(?,?,?,?,?,?,?,?,?,?)',(vid,u['id'],data.origin,data.destination,data.purpose,data.start_odometer,v['mpg'],v['fuel_price'],now(),data.sharing)).lastrowid
         except IntegrityError: raise HTTPException(409,'This vehicle already has a trip in progress.')
         save_participants(c,vid,tid,u['id'],data.participant_ids)
-        notify(c,vid,f"{u['name']} started a drive. " + ('Location sharing is on.' if data.sharing else 'Location is private.'))
+        if data.participant_ids is not None and u['id'] not in data.participant_ids:
+            c.execute('UPDATE trips SET sharing=0 WHERE id=?',(tid,))
+        notify(c,vid,f"{u['name']} started a drive. " + ('Location sharing is on.' if data.sharing and (data.participant_ids is None or u['id'] in data.participant_ids) else 'Location is private.'))
     return {'id':tid}
 
 def driver_trip(c,tid,uid):
@@ -314,6 +316,9 @@ def privacy(tid:int,data:Privacy,u=Depends(current_user)):
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
         driver_trip(c,tid,u['id'])
+        riders=[r[0] for r in c.execute('SELECT user_id FROM trip_participants WHERE trip_id=?',(tid,))]
+        if data.sharing and riders and u['id'] not in riders:
+            raise HTTPException(400,'You can share your location only when you are a rider.')
         c.execute('UPDATE trips SET sharing=?,latitude=NULL,longitude=NULL,location_at=NULL WHERE id=?',(data.sharing,tid))
     return {'ok':True}
 
@@ -565,6 +570,8 @@ def past_trip(vid:int,data:PastTrip,u=Depends(current_user)):
         cost=fuel_cost(Decimal(str(data.end_odometer))-Decimal(str(data.start_odometer)),v['mpg'],v['fuel_price'])
         tid=c.execute('INSERT INTO trips(vehicle_id,user_id,origin,destination,purpose,start_odometer,end_odometer,mpg,fuel_price,cost_cents,started_at,ended_at,sharing) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(vid,u['id'],data.origin,data.destination,data.purpose,data.start_odometer,data.end_odometer,v['mpg'],v['fuel_price'],cost,start_at.isoformat(),end_at.isoformat(),data.sharing)).lastrowid
         save_participants(c,vid,tid,u['id'],data.participant_ids)
+        if data.participant_ids is not None and u['id'] not in data.participant_ids:
+            c.execute('UPDATE trips SET sharing=0 WHERE id=?',(tid,))
         c.execute('UPDATE vehicles SET odometer=MAX(odometer,?) WHERE id=?',(data.end_odometer,vid))
         notify(c,vid,f"{u['name']} added a past trip. Estimated fuel cost: ${cost/100:.2f}.")
     return {'id':tid,'cost_cents':cost}

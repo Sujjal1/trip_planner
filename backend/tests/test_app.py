@@ -397,3 +397,18 @@ def test_past_trip_splits_selected_owners_only():
     assert [o['fuel_cents'] for o in data['owners']]==[180,180]
     assert data['trips'][0]['origin']=='Private location'
     assert len(data['trips'][0]['participants'])==2
+
+
+def test_trip_can_charge_only_other_riders():
+    a=client(); vid=vehicle(a); b=client('Bea'); join(b,a,vid)
+    uid=a.get('/api/me').json()['user']['id']; bid=b.get('/api/me').json()['user']['id']
+    r=start(a,vid,participant_ids=[bid],sharing=True)
+    assert r.status_code==200,r.text
+    tid=r.json()['id']
+    t=a.get(f'/api/vehicles/{vid}').json()['trips'][0]
+    assert not t['sharing']
+    assert a.patch(f'/api/trips/{tid}/privacy',json={'sharing':True}).status_code==400
+    assert a.post(f'/api/trips/{tid}/finish',json={'end_odometer':10030}).status_code==200
+    d=a.get(f'/api/vehicles/{vid}').json()
+    assert {o['id']:o['fuel_cents'] for o in d['owners']}=={uid:0,bid:360}
+    assert [p['user_id'] for p in d['trips'][0]['participants']]==[bid]

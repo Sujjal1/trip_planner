@@ -207,7 +207,7 @@ export function TripPlanner({
         b.destination = destination.trim() || "Trip";
         b.purpose = b.purpose || "Personal";
         b.start_odometer = +start;
-        b.sharing = b.sharing === "on";
+        b.sharing = b.sharing === "on" && selected.includes(userId);
         b.participant_ids = selected;
         if (mode === "past") {
           b.end_odometer = +end;
@@ -282,7 +282,6 @@ export function TripPlanner({
               <input
                 type="checkbox"
                 checked={selected.includes(o.id)}
-                disabled={o.id === userId}
                 onChange={(e) =>
                   setSelected(
                     e.target.checked
@@ -291,13 +290,14 @@ export function TripPlanner({
                   )
                 }
               />
-              {o.id === userId ? "You (driver)" : o.name}
+              {o.id === userId ? "You" : o.name}
             </label>
           ))}
         </div>
         <small>
-          Fuel cost split equally between {selected.length}{" "}
-          {selected.length === 1 ? "person" : "people"}.
+          {selected.length
+            ? `Fuel cost split equally between ${selected.length} ${selected.length === 1 ? "person" : "people"}.`
+            : "Select at least one rider."}
         </small>
       </fieldset>
       {!compact && (
@@ -320,7 +320,11 @@ export function TripPlanner({
             </select>
           </label>
           <label className="check-label">
-            <input name="sharing" type="checkbox" />
+            <input
+              name="sharing"
+              type="checkbox"
+              disabled={!selected.includes(userId)}
+            />
             <span>Share route and live location with co-owners</span>
           </label>
         </details>
@@ -329,7 +333,10 @@ export function TripPlanner({
         {vehicle.mpg} MPG · {money(vehicle.fuel_price)}/gal
         {estimate !== null ? ` · ${money(estimate)} estimated fuel` : ""}
       </p>
-      <button className="btn" disabled={busy || readingStart || readingEnd}>
+      <button
+        className="btn"
+        disabled={busy || readingStart || readingEnd || selected.length === 0}
+      >
         {mode === "past" ? "Save trip" : "Start trip"}
       </button>
     </form>

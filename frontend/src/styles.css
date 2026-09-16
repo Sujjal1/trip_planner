@@ -2861,3 +2861,43 @@ body {
     padding: 24px;
   }
 }
+
+.vehicle-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 850px;
+  margin: 0 auto 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e0e6e2;
+}
+.vehicle-status-row > strong {
+  font-size: 19px;
+  color: #183e31;
+  white-space: nowrap;
+}
+.vehicle-status-row > strong span {
+  font-size: 13px;
+  font-weight: 400;
+}
+.vehicle-status-row .text-btn {
+  margin-left: auto;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.vehicle-status-row .availability {
+  margin: 0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .vehicle-status-row {
+    gap: 7px;
+  }
+  .vehicle-status-row > strong {
+    font-size: 17px;
+  }
+  .vehicle-status-row .availability {
+    padding: 5px 6px;
+  }
+}

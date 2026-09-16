@@ -198,7 +198,13 @@ function App() {
   const active = data?.trips.find((t) => !t.ended_at),
     mine = active?.user_id === me?.user.id;
   useEffect(() => {
-    if (!active || !mine || !active.sharing) return;
+    if (
+      !active ||
+      !mine ||
+      !active.sharing ||
+      !active.participants?.some((p) => p.user_id === me?.user.id)
+    )
+      return;
     if (!navigator.geolocation) {
       setGeoError("This browser does not support location sharing.");
       return;
@@ -323,7 +329,7 @@ function App() {
         <thead>
           <tr>
             <th>TRIP & DESTINATION</th>
-            <th>DRIVER</th>
+            <th>RECORDED BY</th>
             <th>DISTANCE</th>
             <th>
               FUEL COST{" "}
@@ -591,56 +597,16 @@ function App() {
                   ) : null}
                 </div>
               </div>
-              <div className="garage-bar">
-                <div className="garage-select">
-                  <span className="car-square">
-                    <Car size={22} />
-                  </span>
-                  <div>
-                    <select
-                      aria-label="Select vehicle"
-                      value={vid}
-                      onChange={(e) => {
-                        setVid(+e.target.value);
-                        setData(null);
-                      }}
-                    >
-                      {me.vehicles.map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.name}
-                        </option>
-                      ))}
-                    </select>
-                    <small>
-                      {v.plate}
-                      <span>•</span>
-                      {number(v.odometer)} miles on the clock
-                    </small>
-                  </div>
-                </div>
+              <div className="vehicle-status-row">
+                <strong aria-label="Current vehicle mileage">
+                  {number(v.odometer)} <span>mi</span>
+                </strong>
                 <span className={"availability " + (active ? "driving" : "")}>
                   <i />
-                  {active ? "On a trip" : "Available to drive"}
+                  {active ? "In use" : "Available"}
                 </span>
-                <div className="garage-owners">
-                  <div className="avatar-stack">
-                    {owners.slice(0, 4).map((o, i) => (
-                      <span
-                        key={o.id}
-                        className={"avatar small color" + i}
-                        title={o.name}
-                      >
-                        {initials(o.name)}
-                      </span>
-                    ))}
-                  </div>
-                  <span>
-                    {owners.length} co-owner{owners.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
                 <button className="text-btn" onClick={() => open("details")}>
                   Vehicle details
-                  <ChevronRight size={15} />
                 </button>
               </div>
               {active && page !== "Dashboard" && (
@@ -649,8 +615,8 @@ function App() {
                   <div>
                     <strong>
                       {mine
-                        ? "You’re on a drive"
-                        : active.driver + " is on a drive"}
+                        ? "Your recorded trip is in progress"
+                        : "Trip recorded by " + active.driver}
                     </strong>
                     <small>
                       {active.sharing
@@ -686,7 +652,7 @@ function App() {
                       {active
                         ? mine
                           ? "End trip"
-                          : `${active.driver} is driving`
+                          : `Trip recorded by ${active.driver}`
                         : "Start trip"}
                     </h2>
                     {!active ? (
@@ -1243,8 +1209,27 @@ function App() {
           {modal === "details" && (
             <>
               <div className="modal-body vehicle-summary">
-                <Car size={28} />
                 <strong>{v.name}</strong>
+                {me.vehicles.length > 1 && (
+                  <label className="field">
+                    <span>Switch vehicle</span>
+                    <select
+                      aria-label="Select vehicle"
+                      value={vid}
+                      onChange={(e) => {
+                        setModal(null);
+                        setVid(+e.target.value);
+                        setData(null);
+                      }}
+                    >
+                      {me.vehicles.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <span>
                   {v.plate} · {owners.length} co-owners · {number(v.odometer)}{" "}
                   mi
@@ -1849,7 +1834,10 @@ function DrivePanel({
             <input
               type="checkbox"
               checked={!!trip.sharing}
-              disabled={busy}
+              disabled={
+                busy ||
+                !trip.participants.some((p) => p.user_id === trip.user_id)
+              }
               onChange={(e) => onPrivacy(e.target.checked)}
             />
             <div>
