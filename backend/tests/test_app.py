@@ -68,6 +68,11 @@ def test_trip_cost_snapshot_and_single_active_trip():
     assert result.json()['cost_cents']==720 # 60 / original 30 * original $3.60
     assert c.post(f'/api/trips/{tid}/finish',json={'end_odometer':10060}).status_code==409
 
+    data=c.get(f'/api/vehicles/{vid}').json()
+    assert data['vehicle']['odometer']==10060
+    assert data['owners'][0]['balance_cents']==720
+    assert start(c,vid).status_code==400
+
 
 def test_concurrent_starts_only_create_one_trip():
     from concurrent.futures import ThreadPoolExecutor
@@ -86,10 +91,6 @@ def test_concurrent_starts_only_create_one_trip():
         results = list(pool.map(lambda _: attempt(), range(2)))
     assert sorted(results) == [200, 409]
     assert len(owner.get(f'/api/vehicles/{vid}').json()['trips']) == 1
-    data=c.get(f'/api/vehicles/{vid}').json()
-    assert data['vehicle']['odometer']==10060
-    assert data['owners'][0]['balance_cents']==720
-    assert start(c,vid).status_code==400
 
 
 def test_private_trip_redaction_and_location_deletion():
