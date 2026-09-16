@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: codrive
+    name: codrive-sujjal
     runtime: docker
     plan: free
-    region: virginia
+    region: ohio
     branch: codex/codrive-mvp
     healthCheckPath: /api/health
     autoDeployTrigger: checksPass

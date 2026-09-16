@@ -1,5 +1,11 @@
 # CoDrive hosting
 
+Public app: https://codrive-sujjal.onrender.com
+
+The current service uses the Free instance in Ohio and the existing Neon Free
+project. It was created from the public GitHub repository through Render’s
+dashboard. No AWS hosting resources were launched.
+
 ## Free Render + Neon deployment
 
 Use the repository's `render.yaml` Blueprint, which explicitly selects free
