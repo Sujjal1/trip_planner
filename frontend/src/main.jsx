@@ -625,7 +625,7 @@ function App() {
                     </small>
                   </div>
                   <Button variant="secondary" onClick={() => open("drive")}>
-                    {mine ? "Manage drive" : "View drive"}
+                    Manage drive
                     <ArrowRight size={16} />
                   </Button>
                 </div>
@@ -646,9 +646,7 @@ function App() {
                   <section className="card trip-entry">
                     <h2>
                       {active
-                        ? mine
-                          ? "End trip"
-                          : `Trip recorded by ${active.driver}`
+                        ? "End trip"
                         : "Start trip"}
                     </h2>
                     {!active ? (
@@ -675,7 +673,7 @@ function App() {
                           )
                         }
                       />
-                    ) : mine ? (
+                    ) : (
                       <>
                         <p>
                           Starting odometer:{" "}
@@ -701,10 +699,6 @@ function App() {
                           }
                         />
                       </>
-                    ) : (
-                      <p>
-                        Starting odometer: {number(active.start_odometer)} mi
-                      </p>
                     )}
                     <div className="dashboard-actions">
                       <button
@@ -1292,7 +1286,7 @@ function App() {
                     description: "Fuel receipt",
                   });
                 else if (r.odometer != null) {
-                  if (active && mine)
+                  if (active)
                     open("drive", { end_odometer: r.odometer });
                   else if (!active)
                     open("trip", { start_odometer: r.odometer });
@@ -1781,7 +1775,7 @@ function DrivePanel({
             : ""}
         </p>
       )}
-      {mine && (
+      {mine ? (
         <>
           <label className="check-label">
             <input
@@ -1826,6 +1820,15 @@ function DrivePanel({
             onFinish={onFinish}
           />
         </>
+      ) : (
+        <FinishTrip
+          trip={trip}
+          prefill={prefill}
+          api={api}
+          config={config}
+          busy={busy}
+          onFinish={onFinish}
+        />
       )}
     </div>
   );

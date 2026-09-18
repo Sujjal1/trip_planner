@@ -100,7 +100,6 @@ def test_private_trip_redaction_and_location_deletion():
     assert co.get(f'/api/vehicles/{vid}').json()['trips'][0]['latitude']==41.9
     assert co.post(f'/api/trips/{tid}/location',json={'latitude':0,'longitude':0}).status_code==404
     assert co.patch(f'/api/trips/{tid}/privacy',json={'sharing':False}).status_code==404
-    assert co.post(f'/api/trips/{tid}/finish',json={'end_odometer':10020}).status_code==404
     c.patch(f'/api/trips/{tid}/privacy',json={'sharing':False})
     other=co.get(f'/api/vehicles/{vid}').json()['trips'][0]
     assert other['latitude'] is None and other['longitude'] is None
@@ -438,3 +437,19 @@ def test_record_payment_between_other_owners():
     outsider=client('Outside');oid=outsider.get('/api/me').json()['user']['id']
     assert a.post(f'/api/vehicles/{vid}/payments',json={**body,'payer_id':oid}).status_code==404
     assert outsider.post(f'/api/vehicles/{vid}/payments',json=body).status_code==404
+
+def test_any_vehicle_owner_can_finish_active_trip_with_optional_mpg():
+    driver=client(); vid=vehicle(driver); co=client('Jamie'); join(co,driver,vid)
+    tid=start(driver,vid).json()['id']
+    outsider=client('Outside')
+    assert outsider.post(f'/api/trips/{tid}/finish',json={'end_odometer':10030}).status_code==404
+    assert co.post(f'/api/trips/{tid}/finish',json={'end_odometer':10030,'mpg':0}).status_code==422
+    r=co.post(f'/api/trips/{tid}/finish',json={'end_odometer':10030,'mpg':20})
+    assert r.status_code==200, r.text
+    trip=driver.get(f'/api/vehicles/{vid}').json()['trips'][0]
+    assert trip['mpg']==20 and trip['end_odometer']==10030
+    assert round(trip['cost_cents'])==540
+    assert driver.get(f'/api/vehicles/{vid}').json()['vehicle']['mpg']==30
+    tid=start(driver,vid,start_odometer=10030).json()['id']
+    r=co.post(f'/api/trips/{tid}/finish',json={'end_odometer':10060})
+    assert r.status_code==200 and r.json()['cost_cents']==360

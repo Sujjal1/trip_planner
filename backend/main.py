@@ -295,15 +295,20 @@ def driver_trip(c,tid,uid):
 
 class Finish(Model):
     end_odometer: float = Field(ge=0,le=2_000_000)
+    mpg: float | None = Field(default=None,gt=0,le=200)
 
 @app.post('/api/trips/{tid}/finish')
 def finish(tid:int,data:Finish,u=Depends(current_user)):
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
-        t=driver_trip(c,tid,u['id'])
+        t=c.execute('SELECT * FROM trips WHERE id=?',(tid,)).fetchone()
+        if not t: raise HTTPException(404,'Trip not found.')
+        member(c,t['vehicle_id'],u['id'])
+        if t['ended_at']: raise HTTPException(409,'This trip has already ended.')
         if data.end_odometer<t['start_odometer']: raise HTTPException(400,'Ending odometer must be at least the starting reading.')
-        cost=fuel_cost(Decimal(str(data.end_odometer))-Decimal(str(t['start_odometer'])),t['mpg'],t['fuel_price'])
-        c.execute('UPDATE trips SET end_odometer=?,cost_cents=?,ended_at=?,latitude=NULL,longitude=NULL,location_at=NULL WHERE id=?',(data.end_odometer,cost,now(),tid))
+        mpg=data.mpg if data.mpg is not None else t['mpg']
+        cost=fuel_cost(Decimal(str(data.end_odometer))-Decimal(str(t['start_odometer'])),mpg,t['fuel_price'])
+        c.execute('UPDATE trips SET end_odometer=?,mpg=?,cost_cents=?,ended_at=?,latitude=NULL,longitude=NULL,location_at=NULL WHERE id=?',(data.end_odometer,mpg,cost,now(),tid))
         c.execute('UPDATE vehicles SET odometer=? WHERE id=?',(data.end_odometer,t['vehicle_id']))
         notify(c,t['vehicle_id'],f"{u['name']} finished a drive. Estimated fuel cost: ${cost/100:.2f}.")
     return {'cost_cents':cost}

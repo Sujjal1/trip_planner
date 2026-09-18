@@ -346,9 +346,11 @@ export function FinishTrip({
   onFinish,
 }) {
   const [end, setEnd] = useState(prefill.end_odometer ?? ""),
+    [mpg, setMpg] = useState(prefill.mpg ?? ""),
     [reading, setReading] = useState(false);
   const distance = +end - trip.start_odometer;
-  const cost = Math.round((distance / trip.mpg) * trip.fuel_price * 100);
+  const tripMpg = mpg === "" ? trip.mpg : +mpg;
+  const cost = Math.round((distance / tripMpg) * trip.fuel_price * 100);
   const riders = trip.participants || [
     { user_id: trip.user_id, name: trip.driver },
   ];
@@ -357,7 +359,7 @@ export function FinishTrip({
       className="form finish-trip"
       onSubmit={(e) => {
         e.preventDefault();
-        onFinish({ end_odometer: +end });
+        onFinish({ end_odometer: +end, ...(mpg === "" ? {} : { mpg: +mpg }) });
       }}
     >
       <OdometerInput
@@ -369,7 +371,11 @@ export function FinishTrip({
         config={config}
         onBusy={setReading}
       />
-      {end !== "" && distance >= 0 && (
+      <label className="field">
+        <span>Fuel economy for this trip (optional MPG)</span>
+        <input type="number" min="0.1" max="200" step="0.1" placeholder={`Default: ${trip.mpg} MPG`} value={mpg} onChange={(e) => setMpg(e.target.value)} />
+      </label>
+      {end !== "" && distance >= 0 && tripMpg > 0 && tripMpg <= 200 && (
         <div className="cost-preview">
           <strong>{money(cost / 100)}</strong>
           <span>{distance.toFixed(1)} miles · estimated fuel</span>
