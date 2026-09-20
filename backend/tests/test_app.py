@@ -70,7 +70,7 @@ def test_trip_cost_snapshot_and_single_active_trip():
 
     data=c.get(f'/api/vehicles/{vid}').json()
     assert data['vehicle']['odometer']==10060
-    assert data['owners'][0]['balance_cents']==720
+    assert data['owners'][0]['balance_cents']==-720
     assert start(c,vid).status_code==400
 
 
@@ -127,7 +127,7 @@ def test_expense_rounding_fuel_credits_and_membership_snapshot():
     jamie=next(o for o in data['owners'] if o['name']=='Jamie')
     assert jamie['shared_cents']==333
     assert jamie['paid_cents']==2500
-    assert jamie['balance_cents']==-2167
+    assert jamie['balance_cents']==2167
 
 
 def test_invite_controls_routines_and_notifications():
@@ -192,7 +192,7 @@ def test_past_trip_charges_and_overlap_guards():
     assert r.json()['cost_cents']==720
     data=c.get(f'/api/vehicles/{vid}').json()
     assert data['vehicle']['odometer']==10060
-    assert data['owners'][0]['balance_cents']==720
+    assert data['owners'][0]['balance_cents']==-720
     assert c.post(f'/api/vehicles/{vid}/trips/manual',json=body).status_code==409
     earlier={**body,'start_odometer':9980,'end_odometer':9990,'started_at':(t-timedelta(days=1)).isoformat(),'ended_at':(t-timedelta(days=1)+timedelta(hours=1)).isoformat()}
     assert c.post(f'/api/vehicles/{vid}/trips/manual',json=earlier).status_code==200

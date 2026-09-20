@@ -833,7 +833,7 @@ function App() {
                         <thead>
                           <tr>
                             <th>CO-OWNER</th>
-                            <th>NET BALANCE</th>
+                            <th>NET BALANCE (+ CREDIT / − OWED)</th>
                           </tr>
                         </thead>
                         <tbody>

@@ -256,7 +256,8 @@ def dashboard(vid:int,u=Depends(current_user)):
             o['shared_cents']=c.execute('SELECT COALESCE(SUM(s.amount_cents),0) FROM expense_shares s JOIN expenses e ON e.id=s.expense_id WHERE e.vehicle_id=? AND s.user_id=? AND e.deleted_at IS NULL',(vid,o['id'])).fetchone()[0]
             o['sent_cents']=sum(p['amount_cents'] for p in payments if p['user_id']==o['id'])
             o['received_cents']=sum(p['amount_cents'] for p in payments if p['recipient_id']==o['id'])
-            o['balance_cents']=o['fuel_cents']+o['shared_cents']-o['paid_cents']-o['sent_cents']+o['received_cents']
+            # Positive means the owner has credit; negative means the owner owes money.
+            o['balance_cents']=o['paid_cents']+o['sent_cents']-o['fuel_cents']-o['shared_cents']-o['received_cents']
         routines=[dict(x) for x in c.execute('SELECT r.*,u.name driver FROM routines r JOIN users u ON r.user_id=u.id WHERE vehicle_id=?',(vid,))]
         notices=[dict(x) for x in c.execute('SELECT * FROM notifications WHERE vehicle_id=? ORDER BY id DESC LIMIT 30',(vid,))]
     return {'vehicle':v,'owners':owners,'trip_stats':trip_statistics(trips),'trips':trips,'expenses':expenses,'payments':payments,'removed':removed,'routines':routines,'notifications':notices,'server_time':now()}
