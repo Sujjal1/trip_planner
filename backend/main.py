@@ -371,6 +371,25 @@ def expense(vid:int,data:Expense,u=Depends(current_user)):
         notify(c,vid,f"{u['name']} recorded ${amount/100:.2f} for {data.description}.")
     return {'id':eid}
 
+@app.patch('/api/expenses/{eid}')
+def edit_expense(eid:int,data:Expense,u=Depends(current_user)):
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        row=c.execute('SELECT * FROM expenses WHERE id=? AND deleted_at IS NULL',(eid,)).fetchone()
+        if not row: raise HTTPException(404,'Expense not found.')
+        v=member(c,row['vehicle_id'],u['id'])
+        payer_id=data.payer_id if data.payer_id is not None else row['user_id']
+        member(c,row['vehicle_id'],payer_id)
+        amount=cents(data.amount)
+        c.execute('UPDATE expenses SET user_id=?,description=?,category=?,amount_cents=? WHERE id=?',(payer_id,data.description,data.category,amount,eid))
+        c.execute('DELETE FROM expense_shares WHERE expense_id=?',(eid,))
+        if data.category!='Fuel purchase':
+            ids=[x[0] for x in c.execute('SELECT user_id FROM members WHERE vehicle_id=? ORDER BY user_id',(row['vehicle_id'],))]
+            q,r=divmod(amount,len(ids))
+            c.executemany('INSERT INTO expense_shares VALUES(?,?,?)',[(eid,uid,q+(i<r)) for i,uid in enumerate(ids)])
+        notify(c,row['vehicle_id'],f"{u['name']} edited expense #{eid}.")
+    return {'ok':True}
+
 class Payment(Model):
     payer_id: int | None = None
     recipient_id: int

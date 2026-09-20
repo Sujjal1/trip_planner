@@ -890,10 +890,13 @@ function App() {
                                 </td>
                                 <td>{money(e.amount_cents)}</td>
                                 <td>{date(e.created_at)}</td>
-                                <td>
+                                <td><div className="trip-actions">
+                                  <button className="trip-action edit" onClick={() => open("edit-expense", { expense: e })}>
+                                    Edit expense
+                                  </button>
                                   {canRemove(e) && (
                                     <button
-                                      className="text-btn"
+                                      className="trip-action delete"
                                       onClick={() =>
                                         askRemove("expenses", e.id)
                                       }
@@ -901,7 +904,7 @@ function App() {
                                       Delete expense
                                     </button>
                                   )}
-                                </td>
+                                </div></td>
                               </tr>
                             ))}
                           </tbody>
@@ -1168,6 +1171,20 @@ function App() {
               onSubmit={(body) => run(
                 () => api(`/trips/${prefill.trip.id}`, "PATCH", body),
                 "Trip updated.",
+              )}
+            />
+          )}
+          {modal === "edit-expense" && prefill.expense && (
+            <ReceiptExpense
+              api={api}
+              config={config}
+              owners={owners}
+              userId={prefill.expense.user_id}
+              initial={{amount: prefill.expense.amount_cents / 100, category: prefill.expense.category, description: prefill.expense.description}}
+              busy={busy}
+              onSubmit={(body) => run(
+                () => api(`/expenses/${prefill.expense.id}`, "PATCH", body),
+                "Expense updated.",
               )}
             />
           )}
