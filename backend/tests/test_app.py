@@ -453,3 +453,24 @@ def test_any_vehicle_owner_can_finish_active_trip_with_optional_mpg():
     tid=start(driver,vid,start_odometer=10030).json()['id']
     r=co.post(f'/api/trips/{tid}/finish',json={'end_odometer':10060})
     assert r.status_code==200 and r.json()['cost_cents']==360
+
+
+def test_trip_statistics_use_riders_and_total_fuel():
+    a=client();vid=vehicle(a);b=client('Jamie');join(b,a,vid)
+    aid=a.get('/api/me').json()['user']['id'];bid=b.get('/api/me').json()['user']['id']
+    assert a.get(f'/api/vehicles/{vid}').json()['trip_stats']=={'miles':0,'average_mpg':None}
+    tid=start(a,vid,participant_ids=[aid,bid]).json()['id']
+    a.post(f'/api/trips/{tid}/finish',json={'end_odometer':10060,'mpg':20})
+    tid2=start(a,vid,start_odometer=10060,participant_ids=[bid]).json()['id']
+    a.post(f'/api/trips/{tid2}/finish',json={'end_odometer':10090,'mpg':30})
+    active_id=start(a,vid,start_odometer=10090).json()['id']
+    d=a.get(f'/api/vehicles/{vid}').json()
+    assert d['trip_stats']=={'miles':90,'average_mpg':22.5}
+    owners={o['id']:o for o in d['owners']}
+    assert owners[aid]['miles']==60 and owners[aid]['average_mpg']==20
+    assert owners[bid]['miles']==90 and owners[bid]['average_mpg']==22.5
+    a.patch(f'/api/records/trips/{tid2}',json={'deleted':True})
+    assert a.get(f'/api/vehicles/{vid}').json()['trip_stats']=={'miles':60,'average_mpg':20}
+    assert a.post(f'/api/trips/{active_id}/finish',json={'end_odometer':10090}).status_code==200
+    assert a.patch(f'/api/records/trips/{tid2}',json={'deleted':False}).status_code==200
+    assert a.get(f'/api/vehicles/{vid}').json()['trip_stats']=={'miles':90,'average_mpg':22.5}

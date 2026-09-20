@@ -331,6 +331,7 @@ function App() {
             <th>TRIP & DESTINATION</th>
             <th>RECORDED BY</th>
             <th>DISTANCE</th>
+            <th>MPG</th>
             <th>
               FUEL COST{" "}
               <span title="Estimated from miles / MPG × saved fuel price">
@@ -373,6 +374,7 @@ function App() {
                   <span className="status">In progress</span>
                 )}
               </td>
+              <td>{t.ended_at ? number(t.mpg) : "—"}</td>
               <td>
                 <strong>{t.ended_at ? money(t.cost_cents) : "—"}</strong>
                 <small className="trip-shares">
@@ -744,6 +746,7 @@ function App() {
                           <strong>{money(t.cost_cents)}</strong>
                           <small>
                             {number(t.end_odometer - t.start_odometer)} mi
+                            {" · "}{number(t.mpg)} MPG
                           </small>
                         </div>
                       </div>
@@ -754,6 +757,28 @@ function App() {
               )}
               {page === "Trips" && (
                 <section className="card">
+                  <div className="card-heading">
+                    <h2>Trip totals</h2>
+                    <span className="subtle-tag">Completed trips · all time</span>
+                  </div>
+                  <div className="table-scroll">
+                    <table>
+                      <thead><tr><th>OWNER</th><th>MILES TRAVELLED</th><th>AVERAGE MPG</th></tr></thead>
+                      <tbody>
+                        <tr>
+                          <td><strong>Vehicle total</strong></td>
+                          <td><strong>{number(data.trip_stats?.miles || 0)} mi</strong></td>
+                          <td><strong>{data.trip_stats?.average_mpg == null ? "—" : number(data.trip_stats.average_mpg)}</strong></td>
+                        </tr>
+                        {owners.map(o => <tr key={o.id}>
+                          <td>{o.name}{o.id === me.user.id ? " (you)" : ""}</td>
+                          <td>{number(o.miles)} mi</td>
+                          <td>{o.average_mpg == null ? "—" : number(o.average_mpg)}</td>
+                        </tr>)}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="form-note">Shared trips count toward each rider’s miles; the vehicle total counts each trip once.</p>
                   <div className="toolbar">
                     <div className="tabs">
                       {["All trips", "My trips", "Private trips"].map((x) => (
@@ -902,11 +927,14 @@ function App() {
                         {o.name}
                         {o.id === me.user.id ? " (you)" : ""}
                       </h2>
-                      <p>Sharing the road since joining this garage</p>
                       <div className="owner-metrics">
                         <div>
                           <strong>{number(o.miles)}</strong>
-                          <small>Miles driven</small>
+                          <small>Miles travelled</small>
+                        </div>
+                        <div>
+                          <strong>{o.average_mpg == null ? "—" : number(o.average_mpg)}</strong>
+                          <small>Average MPG</small>
                         </div>
                         <div>
                           <strong>{o.trip_count}</strong>
@@ -2000,6 +2028,7 @@ function exportTrips(trips) {
       "Destination",
       "Purpose",
       "Miles",
+      "MPG",
       "Estimated fuel cost USD",
     ],
     ...trips.map((t) => [
@@ -2009,6 +2038,7 @@ function exportTrips(trips) {
       t.destination,
       t.purpose,
       t.ended_at ? t.end_odometer - t.start_odometer : "",
+      t.ended_at ? t.mpg : "",
       t.ended_at ? (t.cost_cents / 100).toFixed(2) : "",
     ]),
   ];

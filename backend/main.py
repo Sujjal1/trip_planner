@@ -217,6 +217,12 @@ def join(data: Join,u=Depends(current_user)):
             notify(c,v['id'],f"{u['name']} joined your garage.")
     return {'id':v['id']}
 
+def trip_statistics(trips):
+    completed=[t for t in trips if t['ended_at']]
+    miles=sum(t['end_odometer']-t['start_odometer'] for t in completed)
+    gallons=sum((t['end_odometer']-t['start_odometer'])/t['mpg'] for t in completed)
+    return {'miles':round(miles,1),'average_mpg':round(miles/gallons,1) if gallons>0 else None}
+
 @app.get('/api/vehicles/{vid}')
 def dashboard(vid:int,u=Depends(current_user)):
     with db() as c:
@@ -242,8 +248,8 @@ def dashboard(vid:int,u=Depends(current_user)):
                 if row['user_id']==u['id'] or v['created_by']==u['id']:
                     removed.append({'kind':table,'id':row['id'],'removed_at':row['deleted_at']})
         for o in owners:
-            owned=[t for t in trips if t['user_id']==o['id']]
-            o['miles']=round(sum((t['end_odometer']-t['start_odometer']) for t in owned if t['ended_at']),1)
+            owned=[t for t in trips if any(p['user_id']==o['id'] for p in t['participants'])]
+            o.update(trip_statistics(owned))
             o['trip_count']=len(owned)
             o['fuel_cents']=sum(p['cost_cents'] for t in trips for p in t['participants'] if p['user_id']==o['id'])
             o['paid_cents']=sum(e['amount_cents'] for e in expenses if e['user_id']==o['id'])
@@ -253,7 +259,7 @@ def dashboard(vid:int,u=Depends(current_user)):
             o['balance_cents']=o['fuel_cents']+o['shared_cents']-o['paid_cents']-o['sent_cents']+o['received_cents']
         routines=[dict(x) for x in c.execute('SELECT r.*,u.name driver FROM routines r JOIN users u ON r.user_id=u.id WHERE vehicle_id=?',(vid,))]
         notices=[dict(x) for x in c.execute('SELECT * FROM notifications WHERE vehicle_id=? ORDER BY id DESC LIMIT 30',(vid,))]
-    return {'vehicle':v,'owners':owners,'trips':trips,'expenses':expenses,'payments':payments,'removed':removed,'routines':routines,'notifications':notices,'server_time':now()}
+    return {'vehicle':v,'owners':owners,'trip_stats':trip_statistics(trips),'trips':trips,'expenses':expenses,'payments':payments,'removed':removed,'routines':routines,'notifications':notices,'server_time':now()}
 
 class TripStart(Model):
     origin: str = Field(min_length=1,max_length=200)
