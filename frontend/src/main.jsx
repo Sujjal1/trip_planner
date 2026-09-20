@@ -394,15 +394,20 @@ function App() {
                 {!t.sharing && <EyeOff size={13} className="private-icon" />}
               </td>
               <td>
-                {t.ended_at && canRemove(t) && (<>
+                {t.ended_at && canRemove(t) && <div className="trip-actions">
                   <button
-                    className="text-btn"
+                    className="trip-action edit"
+                    onClick={() => open("edit-trip", { trip: t })}
+                  >
+                    Edit trip
+                  </button>
+                  <button
+                    className="trip-action delete"
                     onClick={() => askRemove("trips", t.id)}
                   >
                     Delete trip
                   </button>
-                  <button className="text-btn" onClick={() => open("edit-trip", { trip: t })}>Edit trip</button>
-                </>)}
+                </div>}
               </td>
             </tr>
           ))}

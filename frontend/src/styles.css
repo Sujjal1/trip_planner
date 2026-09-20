@@ -500,6 +500,33 @@ h1 {
 .text-btn:hover {
   color: #1b5536;
 }
+
+.trip-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 92px;
+}
+
+.trip-action {
+  appearance: none;
+  border: 1px solid var(--line, #dce3e8);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink, #24313a);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.1;
+  padding: 7px 9px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.trip-action:hover { background: #f3f7f8; border-color: #b9c8cf; }
+.trip-action.delete { color: #a33c3c; }
+.trip-action.delete:hover { background: #fff3f1; border-color: #e8b5ad; }
 .garage-bar > .text-btn {
   border-left: 1px solid var(--line);
   padding-left: 20px;
