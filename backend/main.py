@@ -412,8 +412,7 @@ def edit_trip(tid:int,data:TripEdit,u=Depends(current_user)):
         row=c.execute('SELECT * FROM trips WHERE id=? AND deleted_at IS NULL',(tid,)).fetchone()
         if not row: raise HTTPException(404,'Trip not found.')
         v=member(c,row['vehicle_id'],u['id'])
-        if row['user_id']!=u['id'] and v['created_by']!=u['id']:
-            raise HTTPException(403,'Only the person who recorded this trip or the garage creator can edit it.')
+        # Any current co-owner may correct or remove a completed shared trip.
         if not row['ended_at']: raise HTTPException(409,'Finish the active trip before editing it.')
         if data.end_odometer<data.start_odometer: raise HTTPException(400,'Ending odometer must be at least the starting reading.')
         members={r[0] for r in c.execute('SELECT user_id FROM members WHERE vehicle_id=?',(row['vehicle_id'],))}
@@ -438,7 +437,7 @@ def remove_record(kind:str,rid:int,data:Removal,u=Depends(current_user)):
         row=c.execute(f'SELECT * FROM {kind} WHERE id=?',(rid,)).fetchone()
         if not row: raise HTTPException(404,'Record not found.')
         v=member(c,row['vehicle_id'],u['id'])
-        if row['user_id']!=u['id'] and v['created_by']!=u['id']:
+        if kind!='trips' and row['user_id']!=u['id'] and v['created_by']!=u['id']:
             raise HTTPException(403,'Only the person who recorded this entry or the garage creator can remove or restore it.')
         if bool(row['deleted_at'])==data.deleted: return {'ok':True}
         if kind=='trips':

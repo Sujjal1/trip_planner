@@ -480,7 +480,7 @@ def test_recorded_trip_can_be_edited_by_recorder_or_creator():
     tid=start(a,vid,participant_ids=[a.get('/api/me').json()['user']['id']]).json()['id']
     a.post(f'/api/trips/{tid}/finish',json={'end_odometer':10020})
     body={'origin':'Home','destination':'Airport','purpose':'Personal','start_odometer':10000,'end_odometer':10040,'mpg':24,'sharing':True,'participant_ids':[a.get('/api/me').json()['user']['id'],b.get('/api/me').json()['user']['id']]}
-    assert b.patch(f'/api/trips/{tid}',json=body).status_code==403
+    assert b.patch(f'/api/trips/{tid}',json=body).status_code==200
     assert a.patch(f'/api/trips/{tid}',json=body).status_code==200
     trip=a.get(f'/api/vehicles/{vid}').json()['trips'][0]
     assert trip['destination']=='Airport' and trip['mpg']==24 and trip['end_odometer']==10040

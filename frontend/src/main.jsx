@@ -394,7 +394,7 @@ function App() {
                 {!t.sharing && <EyeOff size={13} className="private-icon" />}
               </td>
               <td>
-                {t.ended_at && canRemove(t) && <div className="trip-actions">
+                {t.ended_at && <div className="trip-actions">
                   <button
                     className="trip-action edit"
                     onClick={() => open("edit-trip", { trip: t })}
