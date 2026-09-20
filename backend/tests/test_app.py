@@ -474,3 +474,14 @@ def test_trip_statistics_use_riders_and_total_fuel():
     assert a.post(f'/api/trips/{active_id}/finish',json={'end_odometer':10090}).status_code==200
     assert a.patch(f'/api/records/trips/{tid2}',json={'deleted':False}).status_code==200
     assert a.get(f'/api/vehicles/{vid}').json()['trip_stats']=={'miles':90,'average_mpg':22.5}
+
+def test_recorded_trip_can_be_edited_by_recorder_or_creator():
+    a=client();vid=vehicle(a);b=client('Jamie');join(b,a,vid)
+    tid=start(a,vid,participant_ids=[a.get('/api/me').json()['user']['id']]).json()['id']
+    a.post(f'/api/trips/{tid}/finish',json={'end_odometer':10020})
+    body={'origin':'Home','destination':'Airport','purpose':'Personal','start_odometer':10000,'end_odometer':10040,'mpg':24,'sharing':True,'participant_ids':[a.get('/api/me').json()['user']['id'],b.get('/api/me').json()['user']['id']]}
+    assert b.patch(f'/api/trips/{tid}',json=body).status_code==403
+    assert a.patch(f'/api/trips/{tid}',json=body).status_code==200
+    trip=a.get(f'/api/vehicles/{vid}').json()['trips'][0]
+    assert trip['destination']=='Airport' and trip['mpg']==24 and trip['end_odometer']==10040
+    assert {p['user_id'] for p in trip['participants']}==set(body['participant_ids'])

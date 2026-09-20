@@ -395,6 +395,41 @@ def payment(vid:int,data:Payment,u=Depends(current_user)):
 class Removal(Model):
     deleted: bool
 
+class TripEdit(Model):
+    origin: str = Field(min_length=1,max_length=200)
+    destination: str = Field(min_length=1,max_length=200)
+    purpose: str = Field(pattern='^(Commute|Errands|Personal|Road trip)$')
+    start_odometer: float = Field(ge=0,le=2_000_000)
+    end_odometer: float = Field(ge=0,le=2_000_000)
+    mpg: float = Field(gt=0,le=200)
+    sharing: bool = False
+    participant_ids: list[int] = Field(min_length=1,max_length=100)
+
+@app.patch('/api/trips/{tid}')
+def edit_trip(tid:int,data:TripEdit,u=Depends(current_user)):
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        row=c.execute('SELECT * FROM trips WHERE id=? AND deleted_at IS NULL',(tid,)).fetchone()
+        if not row: raise HTTPException(404,'Trip not found.')
+        v=member(c,row['vehicle_id'],u['id'])
+        if row['user_id']!=u['id'] and v['created_by']!=u['id']:
+            raise HTTPException(403,'Only the person who recorded this trip or the garage creator can edit it.')
+        if not row['ended_at']: raise HTTPException(409,'Finish the active trip before editing it.')
+        if data.end_odometer<data.start_odometer: raise HTTPException(400,'Ending odometer must be at least the starting reading.')
+        members={r[0] for r in c.execute('SELECT user_id FROM members WHERE vehicle_id=?',(row['vehicle_id'],))}
+        if not set(data.participant_ids)<=members: raise HTTPException(400,'Choose participants from this vehicle’s owners.')
+        for other in c.execute('SELECT * FROM trips WHERE vehicle_id=? AND id!=? AND deleted_at IS NULL',(row['vehicle_id'],tid)):
+            if other['ended_at'] and ((other['ended_at']<=row['started_at'] and other['end_odometer']>data.start_odometer) or (other['started_at']>=row['ended_at'] and other['start_odometer']<data.end_odometer)):
+                raise HTTPException(409,'This edit conflicts with another recorded odometer reading.')
+        cost=fuel_cost(Decimal(str(data.end_odometer))-Decimal(str(data.start_odometer)),data.mpg,row['fuel_price'])
+        c.execute('UPDATE trips SET origin=?,destination=?,purpose=?,start_odometer=?,end_odometer=?,mpg=?,cost_cents=?,sharing=? WHERE id=?',(data.origin,data.destination,data.purpose,data.start_odometer,data.end_odometer,data.mpg,cost,data.sharing,tid))
+        c.execute('DELETE FROM trip_participants WHERE trip_id=?',(tid,))
+        c.executemany('INSERT INTO trip_participants VALUES(?,?)',[(tid,uid) for uid in sorted(set(data.participant_ids))])
+        latest=c.execute('SELECT MAX(end_odometer) FROM trips WHERE vehicle_id=? AND ended_at IS NOT NULL AND deleted_at IS NULL',(row['vehicle_id'],)).fetchone()[0]
+        c.execute('UPDATE vehicles SET odometer=MAX(odometer,?) WHERE id=?',(latest or data.end_odometer,row['vehicle_id']))
+        notify(c,row['vehicle_id'],f"{u['name']} edited trip #{tid}.")
+    return {'ok':True,'cost_cents':cost}
+
 @app.patch('/api/records/{kind}/{rid}')
 def remove_record(kind:str,rid:int,data:Removal,u=Depends(current_user)):
     if kind not in ('trips','expenses','payments'): raise HTTPException(404,'Record not found.')

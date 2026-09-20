@@ -398,6 +398,25 @@ export function FinishTrip({
   );
 }
 
+export function EditTrip({ trip, owners, busy, onSubmit }) {
+  const [origin,setOrigin]=useState(trip.origin), [destination,setDestination]=useState(trip.destination);
+  const [purpose,setPurpose]=useState(trip.purpose), [start,setStart]=useState(trip.start_odometer);
+  const [end,setEnd]=useState(trip.end_odometer), [mpg,setMpg]=useState(trip.mpg);
+  const [sharing,setSharing]=useState(!!trip.sharing);
+  const [participants,setParticipants]=useState((trip.participants||[]).map(p=>p.user_id));
+  const toggle=id=>setParticipants(xs=>xs.includes(id)?xs.filter(x=>x!==id):[...xs,id]);
+  return <form className="modal-body form" onSubmit={e=>{e.preventDefault();if(!participants.length||+end<+start)return;onSubmit({origin,destination,purpose,start_odometer:+start,end_odometer:+end,mpg:+mpg,sharing,participant_ids:participants});}}>
+    <label className="field"><span>From</span><input required value={origin} onChange={e=>setOrigin(e.target.value)} /></label>
+    <label className="field"><span>To</span><input required value={destination} onChange={e=>setDestination(e.target.value)} /></label>
+    <label className="field"><span>Purpose</span><select value={purpose} onChange={e=>setPurpose(e.target.value)}>{['Commute','Errands','Personal','Road trip'].map(x=><option key={x}>{x}</option>)}</select></label>
+    <div className="form-grid"><label className="field"><span>Start odometer</span><input required type="number" min="0" step="0.1" value={start} onChange={e=>setStart(e.target.value)} /></label><label className="field"><span>End odometer</span><input required type="number" min="0" step="0.1" value={end} onChange={e=>setEnd(e.target.value)} /></label></div>
+    <label className="field"><span>MPG</span><input required type="number" min="0.1" max="200" step="0.1" value={mpg} onChange={e=>setMpg(e.target.value)} /></label>
+    <fieldset><legend>Riders</legend>{owners.map(o=><label className="check-label" key={o.id}><input type="checkbox" checked={participants.includes(o.id)} onChange={()=>toggle(o.id)} />{o.name}</label>)}</fieldset>
+    <label className="check-label"><input type="checkbox" checked={sharing} onChange={e=>setSharing(e.target.checked)} />Share location for this trip</label>
+    <button className="btn" disabled={busy||!participants.length}>Save trip changes</button>
+  </form>;
+}
+
 export function ReceiptExpense({ api, config, owners, userId, initial = {}, busy, onSubmit }) {
   const [reading, setReading] = useState(false);
   const [payer, setPayer] = useState(String(userId));

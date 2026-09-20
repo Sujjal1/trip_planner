@@ -3,6 +3,7 @@ import { GoogleEmbed } from "./GoogleRouteSearch.jsx";
 import {
   TripPlanner,
   FinishTrip,
+  EditTrip,
   ReceiptExpense,
   PhotoReading,
 } from "./TripWorkflow.jsx";
@@ -393,14 +394,15 @@ function App() {
                 {!t.sharing && <EyeOff size={13} className="private-icon" />}
               </td>
               <td>
-                {t.ended_at && canRemove(t) && (
+                {t.ended_at && canRemove(t) && (<>
                   <button
                     className="text-btn"
                     onClick={() => askRemove("trips", t.id)}
                   >
                     Delete trip
                   </button>
-                )}
+                  <button className="text-btn" onClick={() => open("edit-trip", { trip: t })}>Edit trip</button>
+                </>)}
               </td>
             </tr>
           ))}
@@ -1152,6 +1154,17 @@ function App() {
                 Keep entry
               </button>
             </div>
+          )}
+          {modal === "edit-trip" && prefill.trip && (
+            <EditTrip
+              trip={prefill.trip}
+              owners={owners}
+              busy={busy}
+              onSubmit={(body) => run(
+                () => api(`/trips/${prefill.trip.id}`, "PATCH", body),
+                "Trip updated.",
+              )}
+            />
           )}
           {modal === "vehicle" && (
             <DataForm
