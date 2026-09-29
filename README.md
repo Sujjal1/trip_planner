@@ -1,6 +1,70 @@
 # CoDrive
 
-**Shared journeys. Fair costs.** A React + JavaScript frontend and Python/FastAPI backend for a jointly owned car. Track who drives, estimate their fuel use, record shared expenses, plan recurring trips, and share location only when the driver opts in.
+A shared-car web app for recording trips, splitting estimated fuel costs, and tracking what each owner has paid or owes. Built with React and JavaScript, a Python/FastAPI backend, and PostgreSQL in production.
+
+**[Open CoDrive](https://codrive-sujjal.onrender.com/)** · [GitHub](https://github.com/Sujjal1/trip_planner) · [Build checks](https://github.com/Sujjal1/trip_planner/actions/workflows/ci.yml)
+
+The website runs on Render with a Neon database. Both are configured on Free plans. Render may sleep when idle, so the first visit can take longer to load. The frontend and backend share one HTTPS address; no mobile app installation is needed.
+
+## Getting started
+
+1. Open the website and create an account.
+2. Add your vehicle with its current odometer, default MPG, and fuel price, or join an existing vehicle with an invitation code.
+3. Invite other owners through **Co-owners → Invite co-owner**.
+4. Start a trip, enter the starting odometer, and select who is riding. You are selected initially, but you can deselect yourself and record a trip for other owners.
+5. End the trip with the ending odometer. Optionally enter the trip's MPG; leaving it blank uses the default captured when the trip started.
+
+Use the small photo option beside an odometer field to read a dashboard photo, or type the number yourself. Review extracted values before saving.
+
+## Features
+
+- **Simple dashboard:** current odometer, vehicle availability, trip controls, Add expense, and recent trips.
+- **Shared trips:** select one or more riders and split estimated fuel costs equally. Only one trip can be active per vehicle.
+- **Trip management:** any co-owner can finish or cancel an active trip, or edit and delete a completed trip. Cancellation frees the vehicle without recording mileage or charges and clears shared coordinates.
+- **Mileage and MPG:** per-trip readings, total vehicle miles and average MPG, owner mileage and MPG summaries, and CSV trip export.
+- **Expenses:** record fuel, maintenance, insurance, parking, or other expenses and choose who paid. Any co-owner can edit an expense.
+- **Payments:** select **Paid by**, **Paid to**, and an amount to record money already paid outside CoDrive. Notes are optional. CoDrive does not transfer money.
+- **Maps:** Google-powered location search, embedded routes, optional live location sharing, and a link to Google Maps navigation.
+- **Photo assistance:** Gemini reads odometer photos and fuel receipts into editable fields. Manual entry remains available when scanning fails.
+- **Past and recurring trips:** record a missed trip or save a recurring-trip template. Templates do not automatically start or charge trips.
+- **Shared accounts and vehicles:** password-protected accounts, invitation codes, multiple vehicles, and in-app activity notifications.
+
+## Costs, balances, and mileage
+
+The app uses **USD, miles, US gallons, and MPG**. Use odometer readings for distance; a speedometer or fuel gauge alone cannot establish exact fuel consumption.
+
+```text
+trip miles = ending odometer − starting odometer
+estimated gallons = trip miles ÷ trip MPG
+estimated fuel cost = estimated gallons × fuel price captured at trip start
+
+owner balance = purchases paid + payments sent
+                − trip fuel shares − shared expense charges − payments received
+```
+
+**Positive balance = credit. Negative balance = money owed.** Recording a payment increases the sender's balance toward zero and decreases the recipient's credit by the same amount.
+
+MPG and fuel price are captured at trip start. You can override MPG when finishing or editing a trip; changing vehicle defaults alone does not recalculate older trips. Costs are rounded to cents, with leftover split cents assigned consistently by owner ID.
+
+Fuel purchases credit the payer without charging consumption twice. Non-fuel expenses are split among owners at entry time; editing an expense rebuilds its split using the current owners. Balances are an estimated running ledger, not exact tank inventory or automatically assigned debts between specific people.
+
+Vehicle mileage counts each completed trip once. Each selected rider receives that trip's full distance in their personal total, so owner totals can exceed vehicle mileage when people travel together. Average MPG is total miles divided by total estimated gallons, rather than a simple average of trip MPG values. Deleted and cancelled trips are excluded.
+
+### Corrections and cancellation
+
+Any co-owner can edit or delete a completed trip. Expense and payment deletion is limited to the recorded payer or garage creator. Deleted entries are retained for restoration; the Trips/Expenses sections show available restoration actions. Restoring a trip must not conflict with other recorded trips.
+
+Deleting a completed trip does not lower the current vehicle odometer. Correct it in **Vehicle details** if needed, subject to existing trip readings. Cancelled active trips cannot be restored as completed trips; start a new trip instead.
+
+## Maps, privacy, and current limits
+
+Location sharing starts off. Only the trip recorder controls their location updates, and sharing is disabled when that person is not a selected rider. Turning sharing off, finishing, or cancelling clears saved coordinates. Private route addresses and GPS are hidden from other owners; shared accounting information remains visible.
+
+Browser GPS requires permission and HTTPS outside localhost. Keep the website open: updates may pause when the browser is backgrounded or the phone locks. Only the latest position is stored. Location updates are throttled to ten seconds; co-owner dashboards refresh every five seconds while open.
+
+Choose a Google search suggestion above the map to set a location. Clicking a pin inside the embedded map does not select it in CoDrive. Spoken turn-by-turn navigation opens in Google Maps; CoDrive does not provide its own navigation engine or reliable background tracking.
+
+Notifications are in-app only. Email/SMS/push notifications, password reset, email verification, and an owner-removal interface are not implemented. Recurring times use local time without a stored garage time zone.
 
 ## Run locally
 
@@ -17,113 +81,63 @@ npm --prefix frontend run build
 uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open **http://localhost:8000**. Create an account, add a vehicle, then use **Co-owners → Invite co-owner** to share the invitation code. A second owner creates their own account and joins using that code. You can share several vehicles with different groups.
+Open [localhost:8000](http://localhost:8000). With `DATABASE_URL` empty, local development uses SQLite at `DATABASE_PATH`. Local accounts and trips are separate from the hosted database and are not automatically uploaded.
 
-For a populated sample garage, set `DEMO_MODE=true` in `backend/.env`, restart the API, and choose **Explore a demo garage** on the sign-in screen. Every demo session gets its own isolated garage with sample owners and twelve sample trips. Demo accounts cannot be recovered after signing out; disable demo mode on a public installation. Demo data stays in SQLite until you remove that development database.
-
-For frontend development, run `uvicorn backend.main:app --reload` in one terminal and `npm --prefix frontend run dev` in another. Open **http://localhost:5173**. Vite proxies `/api` to Python, keeping authentication same-origin.
-
-## Keys and services
-
-**Never paste secret keys into chat, source code, or GitHub.** Both `.env` files are gitignored. The app works with manual inputs before any keys are configured.
-
-| Feature | Get a key | Put it here | Notes |
-|---|---|---|---|
-| Gemini photo reading | [Google AI Studio](https://aistudio.google.com/apikey) | `GEMINI_API_KEY` in `backend/.env` | Server only. `GEMINI_MODEL` defaults to `gemini-2.5-flash`; select an image-capable model available to your account. Free quota, availability, and limits vary by model/account. |
-| Embedded Google routes / shared position | [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials) | `VITE_GOOGLE_MAPS_API_KEY` in `frontend/.env` | Enable **Maps Embed API**. Restrict key to Maps Embed API and your website referrers, including localhost for development. Browser keys are visible by design. Rebuild after changes. |
-| US gasoline reference price | [EIA API registration](https://www.eia.gov/opendata/register.php) | `EIA_API_KEY` in `backend/.env` | Weekly US regular gasoline average, not real-time station pricing. Review and save it manually in Settings, or use a local receipt price. |
-| Date/time | No key needed | Server UTC clock | Trip timestamps come from the server; UI dates are shown in the browser's time zone. Keep the host clock synchronized. |
-
-Restart the backend after changing its keys. Read the current [Gemini pricing/free-tier terms](https://ai.google.dev/gemini-api/docs/pricing), [image API documentation](https://ai.google.dev/gemini-api/docs/image-understanding), [Maps Embed setup](https://developers.google.com/maps/documentation/embed/get-started), [Google key restrictions](https://developers.google.com/maps/api-security-best-practices), and [EIA documentation](https://www.eia.gov/opendata/documentation.php) before enabling the integrations. Gemini free-tier inputs may be used to improve Google products. The scan form requests explicit consent before uploading. CoDrive re-encodes the image to strip metadata and does not persist photos. Avoid uploading sensitive photos.
-
-## What works
-
-- Password accounts with scrypt hashing; expiring, hashed, HttpOnly-cookie sessions; logout; same-origin CSRF protection; basic login throttling.
-- Multiple vehicles, high-entropy invitation codes, creator-only invite rotation, membership checks on vehicle data.
-- Dashboard with real stored mileage, time, costs, recent trips, and owner contributions. Empty garages show honest empty states.
-- Starting and finishing drives using confirmed odometer readings, with one active trip per vehicle enforced by SQLite.
-- Driver-only GPS updates and location controls. Location sharing starts **off**. Private routes are redacted for other owners; turning sharing off or ending a trip deletes coordinates. Only the latest position is stored.
-- Co-owner dashboards and activity notifications refresh every five seconds while the app is open.
-- In-app Google route/position embeds when configured; an external Google Maps link for turn-by-turn navigation. There is no custom in-app turn-by-turn engine.
-- Gemini-assisted odometer/fuel-gauge/receipt reading, editable review, then explicit confirmation. Manual entry remains available.
-- Expense journal, deterministic cent-based equal splits, individual owner balances, and CSV trip export.
-- Recurring trip templates with selected weekdays and a local departure time. Drivers manually start them; templates never automatically bill or reserve the car.
-- Responsive desktop/mobile layout and keyboard-accessible native dialogs.
-
-## How the cost calculation works
-
-A speedometer shows speed, not total distance. Use the **odometer** before and after a trip. A fuel gauge is approximate and cannot establish exact fuel consumption.
-
-```
-distance = ending odometer − starting odometer
-estimated gallons consumed = distance ÷ vehicle MPG
-estimated trip cost = consumed gallons × fuel price at trip start
-owner balance = estimated trip costs + share of non-fuel expenses − purchases paid
-```
-
-Costs are rounded half-up to integer cents. MPG and price are captured when a trip starts, so changing settings cannot rewrite older costs. Non-fuel purchases are split among the owners who belong to the garage at entry time; leftover cents are assigned deterministically by owner ID. Future members do not inherit old expense shares.
-
-Fuel purchases are a payer credit rather than a second consumption charge. Negative balances carry forward (including money paid for fuel still in the tank). This is an **estimated running ledger**, not exact tank inventory accounting or instructions for who should pay whom. Actual vehicle MPG changes with conditions. Reconcile against receipts and full-tank records before settling money. No payment processing or transfers are implemented. Initial fuel inventory and opening balances are not modeled.
-
-The app currently uses **USD, miles, US gallons**, a single driver per trip, and equal non-fuel sharing. Insurance, maintenance, and parking can be recorded manually. Every owner can update the shared MPG/price and record their own payments. Photo readings never automatically change a ledger.
-
-## Location and notifications
-
-Browser GPS needs permission and HTTPS outside localhost. Keep the app open: browsers may pause location when backgrounded or the device locks. Updates are throttled to ten seconds. Other owners poll every five seconds, and the drive screen shows the last GPS timestamp and flags positions older than a minute. Turning sharing off clears the server's saved point immediately; another open screen drops it on its next poll. Already viewed information cannot be recalled.
-
-This version provides **in-app activity notifications only**. Background tracking, email/SMS/mobile push delivery, reservations/conflict scheduling, password reset, email verification, owner removal, trip corrections, and payment settlement are future work. Recurring times are displayed as local time without a persisted garage time zone. Private travel hides route addresses and GPS from co-owners, but the driver's identity, purpose, distance, timestamps, and cost remain visible for shared accounting. Authorized server operators can access stored route addresses.
-
-## Validate
+For development with automatic reload, run these in separate terminals:
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q
+uvicorn backend.main:app --reload
+npm --prefix frontend run dev
+```
+
+Open [localhost:5173](http://localhost:5173). Vite proxies `/api` to Python.
+
+For sample data, set `DEMO_MODE=true` in `backend/.env`, restart, and choose **Explore a demo garage** on the sign-in screen. Each demo session creates its own sample garage. Demo accounts cannot be recovered after signing out; keep demo mode disabled in production.
+
+## API keys and configuration
+
+Manual trip and expense entry works without API keys. Keep local secrets in the gitignored environment files and hosted secrets in **Render → Environment**. Never commit real keys or database passwords.
+
+| Setting | Purpose | Local location |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection URL; empty uses SQLite | `backend/.env` |
+| `DATABASE_PATH` | Local SQLite file path | `backend/.env` |
+| `GEMINI_API_KEY` | Photo reading; obtain from [Google AI Studio](https://aistudio.google.com/apikey) | `backend/.env` |
+| `GEMINI_MODEL` | Image-capable model; app default is `gemini-2.5-flash` | `backend/.env` |
+| `GOOGLE_PLACES_API_KEY` | Server-side Places API (New) search; configure in [Google Cloud](https://console.cloud.google.com/google/maps-apis/credentials) | `backend/.env` |
+| `VITE_GOOGLE_MAPS_API_KEY` | Browser-visible Maps Embed API key | `frontend/.env` |
+| `EIA_API_KEY` | US gasoline reference price; obtain from [EIA](https://www.eia.gov/opendata/register.php) | `backend/.env` |
+| `COOKIE_SECURE` | `true` for hosted HTTPS, `false` for local HTTP | `backend/.env` |
+| `DEMO_MODE` | Sample garages locally; keep `false` in production | `backend/.env` |
+| `APP_ORIGIN` | Local Places fallback referrer, such as `http://localhost:8000` | `backend/.env` |
+
+Restrict the browser key to Maps Embed API and allowed website referrers. Keep the production Places key server-only, restricted to Places API (New) and server outbound addresses. Local development can fall back to the frontend key for Places if that key permits it. Restart the backend after server setting changes; rebuild the frontend after changing its Maps key.
+
+EIA supplies a weekly US regular-gasoline reference price, not live station prices. Review and save it in vehicle settings or use a receipt-based price. Dates come from the server clock and require no API key.
+
+Photos are sent to Gemini after consent, re-encoded to remove metadata, and not persisted by CoDrive. Review the provider's current data-use terms before uploading sensitive images. API quotas and billing are separate from hosting: check the current [Gemini terms](https://ai.google.dev/gemini-api/docs/pricing) and [Maps billing information](https://developers.google.com/maps/billing-and-pricing/overview), and configure quotas for your budget.
+
+## Deployment
+
+- **Source:** this GitHub repository's `main` branch.
+- **Hosting:** Render Free web service, building the Docker image and serving React and FastAPI together over HTTPS.
+- **Database:** Neon PostgreSQL, connected privately through `DATABASE_URL`.
+- **Configuration:** [`render.yaml`](render.yaml), with `COOKIE_SECURE=true` and `DEMO_MODE=false`.
+- **Health check:** [`/api/health`](https://codrive-sujjal.onrender.com/api/health).
+
+The old `codex/codrive-mvp` branch has been retired. Push updates to `main`; Render follows that branch. The Blueprint specifies deployment after checks pass. The current deployment requires no AWS resources. GitHub Pages is not used because it cannot run the Python API.
+
+Render requires `DATABASE_URL` at startup to avoid saving production records to temporary disk. Keep the Neon URL and server API keys private in Render's environment settings; only the Maps Embed key is intentionally browser-visible. Keep backups and review provider usage limits. Free hosting does not guarantee unlimited service or free third-party API calls.
+
+See [deployment instructions](deploy/README.md) for Render/Neon setup and alternative Docker hosting.
+
+## Validation
+
+```bash
+TEST_DATABASE_URL='' DATABASE_URL='' .venv/bin/python -m pytest backend/tests -q
 npm --prefix frontend run build
 ```
 
-Tests exercise authentication and authorization, private-route redaction, location deletion, single-active-trip enforcement, rate snapshots, cost rounding, fuel credits, historical expense sharing, invite rotation, routine ownership, integration fallbacks, and demo isolation. GitHub Actions runs backend tests and the frontend build. Live provider calls require your keys and are not part of automated tests.
+Tests use temporary SQLite databases by default. Set `TEST_DATABASE_URL` only to a disposable PostgreSQL test database: the test suite clears its tables.
 
-## Deployment and GitHub
-
-Repository: [Sujjal1/trip_planner](https://github.com/Sujjal1/trip_planner).
-
-The Python service can serve the built React app and API from the same origin. Before public deployment:
-
-1. Build the frontend with the domain-restricted Maps key, if used.
-2. Provide backend environment variables through your host's secret manager. Set `COOKIE_SECURE=true`, `DEMO_MODE=false`, and an absolute `DATABASE_PATH` on a persistent volume.
-3. Run behind HTTPS with a request size limit of 8 MB and trusted proxy configuration. Do not expose a development server.
-4. Back up the database, restrict filesystem access, and set provider quotas. Free-tier API limits can interrupt scanning; manual entry is the fallback.
-5. Add shared rate limiting and account recovery before broad public use. The included throttle is per-process, suitable for a small single-process pilot.
-
-SQLite is suitable for a small shared garage. Use PostgreSQL and shared session/rate-limit infrastructure when scaling across instances. This initial version is for a private pilot, not an audited financial or fleet-management system.
-
-GitHub Pages alone cannot host the Python API. Choose a Python-capable host with persistent storage, or host the frontend and proxy its `/api` requests to the backend. All current data lives in SQLite; there is no automatic cloud synchronization beyond clients talking to the same server.
-
-The [deployment package](deploy/README.md) includes a Docker build, HTTPS reverse
-proxy, persistent database volume, and a public health check. GitHub Actions
-validates the container in addition to application tests. AWS resources must
-still be selected against the signed-in account's actual free-tier eligibility;
-the configuration does not launch or purchase hosting.
-
-## Map-first and photo-assisted trips
-
-**Vehicle details** now opens an editable vehicle card for name, plate, odometer, MPG, and fuel price. Odometer adjustments cannot invalidate recorded trips or change during an active drive.
-
-**Start a trip** opens an embedded Google map. Search for origin and destination, then select Google suggestions to preview driving directions before starting. Google Maps Embed does not expose clicked pins back to the app, so choose from the Google search results above the map. This uses Google Places and Maps Embed; Google-powered autocomplete is described below; in-app turn-by-turn navigation is not implemented.
-
-Use **Record a past trip** if you did not have your phone. Supply the actual start/end times and odometer readings; the app calculates costs and updates balances atomically. Overlapping times and contradictory odometer readings are rejected. Retrospective costs use current vehicle MPG and price, clearly shown before saving.
-
-Start/end dashboard photos and fuel receipts can now be read inline without losing your route. After Gemini consent, selecting a photo starts extraction automatically and fills the corresponding fields. Confirm once to save: distance, estimated fuel cost, odometer, and owner balances update together. Photos cannot reliably determine exact fuel consumption; unreadable values still require manual entry. Financial records are not silently posted from uncertain image readings.
-
-### Google-powered location selection
-
-The planner now uses live Google Places autocomplete results, fetched through authenticated Python endpoints to avoid the native widget's browser RPC connection failures. Select a suggestion to resolve its address and Google place ID; the route preview updates only after selection, rather than reloading on every keystroke. Start and destination are saved on the trip. There is also an explicit current-location button and a manual-entry fallback. Map loading feedback and **Reload map** are available before and during a drive.
-
-Enable **Places API (New)** with billing in your Google project, alongside Maps Embed API. Local development reuses the existing key from `frontend/.env` with the `APP_ORIGIN` referrer. For production (`COOKIE_SECURE=true`), configure a separate server-only `GOOGLE_PLACES_API_KEY` in `backend/.env`, restricted to Places API (New) and your server IP. Keep the browser Maps Embed key restricted to your website. Autocomplete session tokens are carried through place-details selection; only the needed place fields are requested. Places has its own pricing and quotas, separate from Maps Embed.
-
-The Google map iframe itself still cannot send a clicked pin back to CoDrive; choose the Google suggestion above the map. Google place IDs identify the selected locations in the preview; resolved addresses are stored in trip history. Background turn-by-turn navigation is not implemented.
-
-### Payments and corrections
-
-Use **Expenses → Record payment** to record money you already paid another owner outside CoDrive. This is a ledger entry, not a bank transfer or fuel purchase. It reduces the sender's net balance and increases the recipient's by the same amount. Owner balances include separate purchase, payment-sent, and payment-received totals; estimated fuel may leave a garage-wide surplus or shortfall, so these are not automatically assigned debts between specific people.
-
-Completed trips, expenses, and direct payments can be deleted by the author or garage creator. Deleted records are retained for restoration and excluded from totals. **Deleted entries** in Trips/Expenses restores them; the garage activity records both actions. Active trips must be finished first. Deleting a trip does not roll back the vehicle's current odometer. If needed, correct the odometer in Vehicle details after removing the incorrect trip. A restored trip cannot conflict with other recorded trips and may raise the current odometer to its ending reading.
+[GitHub Actions](https://github.com/Sujjal1/trip_planner/actions/workflows/ci.yml) runs tests against SQLite and PostgreSQL, builds the frontend, validates deployment configuration, and builds and checks the Docker container. Coverage includes authentication, membership permissions, trip costs and cancellation, mileage statistics, balance signs, payments, corrections, privacy, and integration fallbacks. Live provider calls are not part of automated tests.

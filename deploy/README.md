@@ -14,7 +14,7 @@ plan and provide its pooled PostgreSQL connection string as `DATABASE_URL` in
 Render's secret environment settings. Keep `sslmode=require` (or stronger) in
 the connection string. Never commit the URL. Select a nearby Neon region.
 
-Render builds the complete app from the `codex/codrive-mvp` branch after checks
+Render builds the complete app from the `main` branch after checks
 pass and supplies a public HTTPS `onrender.com` address. Supply the existing API
 keys in Render's environment settings; only `VITE_GOOGLE_MAPS_API_KEY` is included
 in the browser build. Add the new hostname to that key's referrer restrictions.
