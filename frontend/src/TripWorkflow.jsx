@@ -344,6 +344,7 @@ export function FinishTrip({
   config,
   busy,
   onFinish,
+  onCancel,
 }) {
   const [end, setEnd] = useState(prefill.end_odometer ?? ""),
     [mpg, setMpg] = useState(prefill.mpg ?? ""),
@@ -393,6 +394,11 @@ export function FinishTrip({
       )}
       <button className="btn" disabled={busy || reading || end === ""}>
         End trip & save
+      </button>
+      <button type="button" className="btn secondary" disabled={busy || reading} onClick={() => {
+        if (window.confirm("Cancel this trip? No mileage or cost will be recorded.")) onCancel();
+      }}>
+        Cancel trip
       </button>
     </form>
   );

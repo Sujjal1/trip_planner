@@ -71,6 +71,10 @@ def init_db():
                 c.execute(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS deleted_at TEXT')
             elif 'deleted_at' not in {r['name'] for r in c.execute(f'PRAGMA table_info({table})')}:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN deleted_at TEXT')
+        if DATABASE_URL:
+            c.execute('ALTER TABLE trips ADD COLUMN IF NOT EXISTS cancelled_at TEXT')
+        elif 'cancelled_at' not in {r['name'] for r in c.execute('PRAGMA table_info(trips)')}:
+            c.execute('ALTER TABLE trips ADD COLUMN cancelled_at TEXT')
 
 init_db()
 
@@ -244,7 +248,8 @@ def dashboard(vid:int,u=Depends(current_user)):
         payments=[dict(x) for x in c.execute('SELECT p.*,a.name payer,b.name recipient FROM payments p JOIN users a ON a.id=p.user_id JOIN users b ON b.id=p.recipient_id WHERE vehicle_id=? AND deleted_at IS NULL ORDER BY p.id DESC',(vid,))]
         removed=[]
         for table in ('trips','expenses','payments'):
-            for row in c.execute(f'SELECT id,user_id,deleted_at FROM {table} WHERE vehicle_id=? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC',(vid,)):
+            filter_cancelled=' AND cancelled_at IS NULL' if table=='trips' else ''
+            for row in c.execute(f'SELECT id,user_id,deleted_at FROM {table} WHERE vehicle_id=? AND deleted_at IS NOT NULL{filter_cancelled} ORDER BY deleted_at DESC',(vid,)):
                 if row['user_id']==u['id'] or v['created_by']==u['id']:
                     removed.append({'kind':table,'id':row['id'],'removed_at':row['deleted_at']})
         for o in owners:
@@ -303,6 +308,21 @@ def driver_trip(c,tid,uid):
 class Finish(Model):
     end_odometer: float = Field(ge=0,le=2_000_000)
     mpg: float | None = Field(default=None,gt=0,le=200)
+
+@app.post('/api/trips/{tid}/cancel')
+def cancel_trip(tid:int,u=Depends(current_user)):
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        t=c.execute('SELECT * FROM trips WHERE id=?',(tid,)).fetchone()
+        if not t: raise HTTPException(404,'Trip not found.')
+        member(c,t['vehicle_id'],u['id'])
+        if t['cancelled_at']: return {'ok':True}
+        if t['ended_at']: raise HTTPException(409,'This trip has already ended.')
+        timestamp=now()
+        # Retain the record, but release the active-trip slot without mileage or charges.
+        c.execute('UPDATE trips SET cancelled_at=?,deleted_at=?,ended_at=?,sharing=0,latitude=NULL,longitude=NULL,location_at=NULL WHERE id=?',(timestamp,timestamp,timestamp,tid))
+        notify(c,t['vehicle_id'],f"{u['name']} cancelled a drive.")
+    return {'ok':True}
 
 @app.post('/api/trips/{tid}/finish')
 def finish(tid:int,data:Finish,u=Depends(current_user)):
@@ -457,6 +477,8 @@ def remove_record(kind:str,rid:int,data:Removal,u=Depends(current_user)):
         row=c.execute(f'SELECT * FROM {kind} WHERE id=?',(rid,)).fetchone()
         if not row: raise HTTPException(404,'Record not found.')
         v=member(c,row['vehicle_id'],u['id'])
+        if kind=='trips' and row['cancelled_at']:
+            raise HTTPException(409,'A cancelled trip cannot be restored. Start a new trip instead.')
         if kind!='trips' and row['user_id']!=u['id'] and v['created_by']!=u['id']:
             raise HTTPException(403,'Only the person who recorded this entry or the garage creator can remove or restore it.')
         if bool(row['deleted_at'])==data.deleted: return {'ok':True}

@@ -695,6 +695,7 @@ function App() {
                         <FinishTrip
                           key={active.id}
                           trip={active}
+                          onCancel={() => run(() => api(`/trips/${active.id}/cancel`, "POST"), "Trip cancelled.")}
                           prefill={{}}
                           api={api}
                           config={config}
@@ -1365,6 +1366,7 @@ function App() {
           )}
           {modal === "drive" && active && (
             <DrivePanel
+              onCancel={() => run(() => api(`/trips/${active.id}/cancel`, "POST"), "Trip cancelled.")}
               config={config}
               trip={active}
               mine={mine}
@@ -1806,6 +1808,7 @@ function MapView({ trip, mine }) {
   );
 }
 function DrivePanel({
+  onCancel,
   config,
   trip,
   mine,
@@ -1881,6 +1884,7 @@ function DrivePanel({
             config={config}
             busy={busy}
             onFinish={onFinish}
+            onCancel={onCancel}
           />
         </>
       ) : (
@@ -1891,6 +1895,7 @@ function DrivePanel({
           config={config}
           busy={busy}
           onFinish={onFinish}
+          onCancel={onCancel}
         />
       )}
     </div>

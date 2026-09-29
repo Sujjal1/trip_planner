@@ -45,6 +45,37 @@ def join(c,owner,vid):
     assert r.status_code==200,r.text
 
 
+@pytest.mark.parametrize('cancel_by_coowner', [False, True])
+def test_cancel_active_trip_without_charges_or_mileage(cancel_by_coowner):
+    owner=client();vid=vehicle(owner);co=client('Sam');join(co,owner,vid)
+    outsider=client('Other')
+    tid=start(owner,vid).json()['id']
+    owner.post(f'/api/trips/{tid}/location',json={'latitude':41,'longitude':-87})
+    assert outsider.post(f'/api/trips/{tid}/cancel').status_code==404
+    actor=co if cancel_by_coowner else owner
+    for _ in range(2):
+        assert actor.post(f'/api/trips/{tid}/cancel').status_code==200
+    d=owner.get(f'/api/vehicles/{vid}').json()
+    assert d['trips']==[] and d['removed']==[]
+    assert d['vehicle']['odometer']==10000
+    assert d['trip_stats']=={'miles':0,'average_mpg':None}
+    assert all(o['balance_cents']==0 for o in d['owners'])
+    with main.db() as c:
+        row=c.execute('SELECT * FROM trips WHERE id=?',(tid,)).fetchone()
+        assert row['cancelled_at'] and row['cost_cents']==0
+        assert row['end_odometer'] is None
+        assert not row['sharing'] and row['latitude'] is None and row['longitude'] is None and row['location_at'] is None
+    assert owner.post(f'/api/trips/{tid}/finish',json={'end_odometer':10020}).status_code==409
+    assert owner.post(f'/api/trips/{tid}/location',json={'latitude':41,'longitude':-87}).status_code==409
+    assert owner.patch(f'/api/records/trips/{tid}',json={'deleted':False}).status_code==409
+    replacement=start(co,vid)
+    assert replacement.status_code==200
+    rid=replacement.json()['id']
+    assert owner.post(f'/api/trips/{rid}/finish',json={'end_odometer':10030}).status_code==200
+    assert co.post(f'/api/trips/{rid}/cancel').status_code==409
+    assert owner.get(f'/api/vehicles/{vid}').json()['trip_stats']['miles']==30
+
+
 def test_auth_sessions_csrf_and_isolation():
     owner=client();vid=vehicle(owner);outsider=client('Other')
     assert outsider.get(f'/api/vehicles/{vid}').status_code==404
@@ -273,20 +304,20 @@ def test_direct_payment_settles_both_owners_and_undoes_cleanly():
     uid=owner.get('/api/me').json()['user']['id'];sid=sam.get('/api/me').json()['user']['id']
     expense=owner.post(f'/api/vehicles/{vid}/expenses',json={'description':'Service','category':'Maintenance','amount':60}).json()['id']
     def balances():return {o['id']:o['balance_cents'] for o in owner.get(f'/api/vehicles/{vid}').json()['owners']}
-    assert balances()=={uid:-3000,sid:3000}
+    assert balances()=={uid:3000,sid:-3000}
     r=sam.post(f'/api/vehicles/{vid}/payments',json={'recipient_id':uid,'amount':'30.00','note':'Cash'})
     assert r.status_code==200,r.text
     pid=r.json()['id'];assert balances()=={uid:0,sid:0}
     d=owner.get(f'/api/vehicles/{vid}').json();assert len(d['expenses'])==1 and len(d['payments'])==1
     assert sam.patch(f'/api/records/payments/{pid}',json={'deleted':True}).status_code==200
-    assert balances()=={uid:-3000,sid:3000}
+    assert balances()=={uid:3000,sid:-3000}
     # Duplicate delete is harmless, restore applies exactly once.
     sam.patch(f'/api/records/payments/{pid}',json={'deleted':True})
     for _ in range(2):assert sam.patch(f'/api/records/payments/{pid}',json={'deleted':False}).status_code==200
     assert balances()=={uid:0,sid:0}
     assert sam.patch(f'/api/records/expenses/{expense}',json={'deleted':True}).status_code==403
     assert owner.patch(f'/api/records/expenses/{expense}',json={'deleted':True}).status_code==200
-    assert balances()=={uid:3000,sid:-3000}
+    assert balances()=={uid:-3000,sid:3000}
     owner.patch(f'/api/records/expenses/{expense}',json={'deleted':False})
     assert balances()=={uid:0,sid:0}
 
